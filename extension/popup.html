@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>Video Synchronizer</title>
+  <style>
+    :root {
+      --bg-color: #121212;
+      --card-bg: #1e1e1e;
+      --accent-color: #ff0000;
+      --text-color: #ffffff;
+      --text-secondary: #aaaaaa;
+      --success-color: #00e676;
+      --border-color: #333333;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      margin: 0;
+      padding: 16px;
+      width: 280px;
+      box-sizing: border-box;
+    }
+
+    h3 {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--text-color);
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 8px;
+    }
+
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-color);
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input[type="text"]:focus {
+      border-color: var(--accent-color);
+    }
+
+    button {
+      width: 100%;
+      background-color: var(--accent-color);
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+
+    button:hover {
+      background-color: #cc0000;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    .button-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .btn-secondary {
+      flex: 1;
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-color);
+      padding: 6px 8px;
+      font-size: 11px;
+      font-weight: 500;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.2s, border-color 0.2s, transform 0.1s;
+    }
+
+    .btn-secondary:hover {
+      background-color: #2e2e2e;
+      border-color: #555555;
+    }
+
+    .btn-secondary:active {
+      transform: scale(0.96);
+    }
+
+    .status-panel {
+      margin-top: 12px;
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 10px;
+      font-size: 12px;
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+
+    .status-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .status-label {
+      color: var(--text-secondary);
+    }
+
+    .status-value {
+      font-weight: 500;
+    }
+
+    .status-connected {
+      color: var(--success-color);
+    }
+
+    .status-disconnected {
+      color: #ff5252;
+    }
+
+    .status-connecting {
+      color: #ffb300;
+    }
+
+    .instruction {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+      text-align: center;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+
+<body>
+  <h3>Video Synchronizer</h3>
+
+  <div class="form-group">
+    <label for="room-id">Sync Room ID</label>
+    <input type="text" id="room-id" placeholder="e.g. MOVIE123" autocomplete="off" spellcheck="false">
+    <div class="button-row">
+      <button id="gen-btn" type="button" class="btn-secondary">Generate</button>
+      <button id="copy-btn" type="button" class="btn-secondary">Copy</button>
+      <button id="paste-btn" type="button" class="btn-secondary">Paste</button>
+    </div>
+  </div>
+
+  <button id="connect-btn">Connect &amp; Sync</button>
+
+  <div class="status-panel">
+    <div class="status-row">
+      <span class="status-label">Status:</span>
+      <span id="status-value" class="status-value status-disconnected">Disconnected</span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Peers:</span>
+      <span id="peers-value" class="status-value">0 / 2</span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">P2P Latency:</span>
+      <span id="latency-value" class="status-value">-- ms</span>
+    </div>
+  </div>
+
+  <div class="instruction">
+    Ensure you are on a YouTube or Netflix video page before connecting!
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>

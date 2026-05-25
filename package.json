@@ -1,0 +1,13 @@
+{
+  "name": "video-synchronizer-server",
+  "version": "1.0.0",
+  "description": "Minimal WebSocket signaling server for real-time video sync Chrome Extension",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.17.0"
+  },
+  "private": true
+}

@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Remote Video Synchronizer",
+  "version": "1.0.0",
+  "description": "Synchronizes video playback, speed, and seeking on YouTube and Netflix between remote users.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "clipboardRead"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "*://*.netflix.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.youtube.com/*",
+        "*://*.netflix.com/*"
+      ],
+      "js": [
+        "config.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
