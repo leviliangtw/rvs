@@ -14,6 +14,7 @@ console.log('[Sync] Remote Video Synchronizer (RVS) Extension content script inj
 
 // Initialize video element discovery
 findAndBindVideo();
+updateBackgroundStatus('Disconnected');
 
 // Keep searching for video element in case of dynamic SPA navigation (YouTube/Netflix page changes)
 const searchInterval = setInterval(() => {
@@ -97,6 +98,7 @@ function connectToSignalingServer(roomId) {
 
       currentRoomId = roomId;
       connectionStatus = 'Connecting';
+      updateBackgroundStatus('Connecting');
       console.log(`[Sync] Connecting to ${WS_SERVER_URL} for room ${roomId}...`);
       
       // Connect to WS signaling server (URL from config.js)
@@ -120,11 +122,13 @@ function connectToSignalingServer(roomId) {
       socket.onerror = (err) => {
         console.error('[Sync] WebSocket connection error:', err);
         connectionStatus = 'Disconnected';
+        updateBackgroundStatus('Disconnected');
         reject(new Error('Signaling server unavailable'));
       };
 
     } catch (e) {
       connectionStatus = 'Disconnected';
+      updateBackgroundStatus('Disconnected');
       reject(e);
     }
   });
@@ -148,6 +152,7 @@ function handleWebSocketMessage(rawMessage) {
       
       if (data.status === 'connected') {
         connectionStatus = 'Connected';
+        updateBackgroundStatus('Connected');
         console.log(`[Sync] Room state updated. Peers in room: ${peersCount}`);
         
         if (peersCount === 2) {
@@ -255,6 +260,7 @@ function cleanupConnection() {
     socket = null;
   }
   connectionStatus = 'Disconnected';
+  updateBackgroundStatus('Disconnected');
   peersCount = 0;
   currentRoomId = null;
   console.log('[Sync] Cleanup executed. Synchronizer reset.');
@@ -264,5 +270,17 @@ function cleanupConnection() {
 function sendSyncMessage(payload) {
   if (socket && socket.readyState === WebSocket.OPEN && peersCount === 2) {
     socket.send(JSON.stringify(payload));
+  }
+}
+
+// Notify background service worker of current tab status to draw action icon
+function updateBackgroundStatus(status) {
+  try {
+    chrome.runtime.sendMessage({ action: 'UPDATE_STATUS', status: status }, () => {
+      // Ignore runtime errors if popup/background worker context is invalidated
+      const err = chrome.runtime.lastError;
+    });
+  } catch (e) {
+    // Ignore runtime failures
   }
 }
