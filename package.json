@@ -1,7 +1,7 @@
 {
-  "name": "video-synchronizer-server",
+  "name": "rvs-server",
   "version": "1.0.0",
-  "description": "Minimal WebSocket signaling server for real-time video sync Chrome Extension",
+  "description": "Minimal WebSocket signaling server for Remote Video Synchronizer (RVS) Chrome Extension",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

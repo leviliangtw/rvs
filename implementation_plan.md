@@ -1,4 +1,4 @@
-# Implementation Plan - Chrome Extension Video Synchronizer
+# Implementation Plan - Remote Video Synchronizer (RVS)
 
 A lightweight Chrome Extension prototype (Manifest V3) and minimal WebSocket backend designed to synchronize playback time, play/pause state, and speed of native video players on **YouTube** and **Netflix** in real time for two remote users.
 
@@ -19,7 +19,7 @@ Please review the simplified, extension-focused architecture below.
 
 ## Proposed Changes
 
-We will create a clean, simple project structure inside the workspace (`/home/levil/vc`):
+We will create a clean, simple project structure inside the workspace (`/home/levil/rvs`):
 - `/extension`: The Chrome Extension files.
 - `server.js` & `package.json`: The signaling backend.
 
@@ -45,11 +45,11 @@ graph TD
 
 A minimal server to pair two WebSocket connections matching the same Room ID and relay event payloads.
 
-#### [NEW] [package.json](file:///home/levil/vc/package.json)
+#### [NEW] [package.json](file:///home/levil/rvs/package.json)
 - Declares dependencies: `"ws": "^8.17.0"`.
 - Simple start script: `"start": "node server.js"`.
 
-#### [NEW] [server.js](file:///home/levil/vc/server.js)
+#### [NEW] [server.js](file:///home/levil/rvs/server.js)
 - Runs a WebSocket server on `127.0.0.1:8080`.
 - Manages rooms. When a user connects and joins a room, they are stored.
 - Supports exactly two users per room.
@@ -62,7 +62,7 @@ A minimal server to pair two WebSocket connections matching the same Room ID and
 
 A standard Chrome Extension that interacts directly with active tabs.
 
-#### [NEW] [/extension/manifest.json](file:///home/levil/vc/extension/manifest.json)
+#### [NEW] [/extension/manifest.json](file:///home/levil/rvs/extension/manifest.json)
 - Standard Manifest V3 structure.
 - Requests permissions: `activeTab`, `storage`, `clipboardRead`.
 - Specifies host permissions for matching sites:
@@ -70,7 +70,7 @@ A standard Chrome Extension that interacts directly with active tabs.
   - `*://*.netflix.com/*`
 - Defines the `popup.html` action and declares `content.js` as an injectable content script.
 
-#### [NEW] [/extension/popup.html](file:///home/levil/vc/extension/popup.html)
+#### [NEW] [/extension/popup.html](file:///home/levil/rvs/extension/popup.html)
 - Extremely simple popup UI.
 - Contains:
   - A small header ("Video Sync Prototype").
@@ -78,11 +78,11 @@ A standard Chrome Extension that interacts directly with active tabs.
   - A "Connect / Join Room" button.
   - Current connection state and measured peer-to-peer latency displays.
 
-#### [NEW] [/extension/popup.js](file:///home/levil/vc/extension/popup.js)
+#### [NEW] [/extension/popup.js](file:///home/levil/rvs/extension/popup.js)
 - Retrieves the active tab and sends a message to the content script (`content.js`) containing the Room ID when the user clicks the button.
 - Saves/reads the Room ID to Chrome storage for persistence.
 
-#### [NEW] [/extension/content.js](file:///home/levil/vc/extension/content.js)
+#### [NEW] [/extension/content.js](file:///home/levil/rvs/extension/content.js)
 - Automatically injected when on YouTube or Netflix.
 - Listens for messages from `popup.js` to trigger a connection to the WebSocket server.
 - Locates the native player: `const video = document.querySelector('video')`.

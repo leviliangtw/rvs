@@ -10,7 +10,7 @@ let pingInterval = null;
 let videoElement = null;
 let eventListenersBound = false;
 
-console.log('[Sync] Video Synchronizer Extension content script injected.');
+console.log('[Sync] Remote Video Synchronizer (RVS) Extension content script injected.');
 
 // Initialize video element discovery
 findAndBindVideo();

@@ -12,7 +12,7 @@ const wss = new WebSocketServer({ port: PORT, host: HOST });
 // roomId -> Array of WebSocket client objects
 const rooms = new Map();
 
-console.log(`WebSocket Signaling Server running on ws://${HOST}:${PORT}`);
+console.log(`Remote Video Synchronizer (RVS) Signaling Server running on ws://${HOST}:${PORT}`);
 
 wss.on('connection', (ws) => {
   let currentRoomId = null;

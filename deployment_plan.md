@@ -1,4 +1,4 @@
-# Deployment Plan - Video Synchronizer
+# Deployment Plan - Remote Video Synchronizer (RVS)
 
 ## Overview
 
@@ -44,11 +44,11 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
 # 3. Clone or copy the project
-scp -r /home/levil/vc user@your-server-ip:~/vc
-# OR: git clone your-repo ~/vc
+scp -r /home/levil/rvs user@your-server-ip:~/rvs
+# OR: git clone your-repo ~/rvs
 
 # 4. Install dependencies
-cd ~/vc && npm install --production
+cd ~/rvs && npm install --production
 
 # 5. Run with production settings
 HOST=0.0.0.0 PORT=8080 node server.js
@@ -59,15 +59,15 @@ HOST=0.0.0.0 PORT=8080 node server.js
 Use `systemd` to auto-start and auto-restart the server:
 
 ```bash
-sudo tee /etc/systemd/system/video-sync.service > /dev/null << 'EOF'
+sudo tee /etc/systemd/system/rvs.service > /dev/null << 'EOF'
 [Unit]
-Description=Video Synchronizer Signaling Server
+Description=Remote Video Synchronizer (RVS) Signaling Server
 After=network.target
 
 [Service]
 Type=simple
 User=www-data
-WorkingDirectory=/home/user/vc
+WorkingDirectory=/home/user/rvs
 Environment=HOST=0.0.0.0
 Environment=PORT=8080
 ExecStart=/usr/bin/node server.js
@@ -79,13 +79,13 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable video-sync
-sudo systemctl start video-sync
+sudo systemctl enable rvs
+sudo systemctl start rvs
 
 # Check status
-sudo systemctl status video-sync
+sudo systemctl status rvs
 # View logs
-sudo journalctl -u video-sync -f
+sudo journalctl -u rvs -f
 ```
 
 ### TLS / WSS (Secure WebSocket)
@@ -132,7 +132,7 @@ const WS_SERVER_URL = 'wss://sync.yourdomain.com';
 
 ### Configuration Before Packaging
 
-Edit [extension/config.js](file:///home/levil/vc/extension/config.js) — this is the **only file** you need to change:
+Edit [extension/config.js](file:///home/levil/rvs/extension/config.js) — this is the **only file** you need to change:
 
 ```js
 // Change this to your production server URL
@@ -152,8 +152,8 @@ const WS_SERVER_URL = 'wss://sync.yourdomain.com';
 1. Create a [Chrome Developer account](https://chrome.google.com/webstore/devconsole) ($5 one-time fee)
 2. Zip the extension directory:
    ```bash
-   cd /home/levil/vc
-   zip -r video-sync-extension.zip extension/
+   cd /home/levil/rvs
+   zip -r rvs-extension.zip extension/
    ```
 3. Upload the `.zip` to the Chrome Web Store Developer Dashboard
 4. Fill in listing details (name, description, screenshots)

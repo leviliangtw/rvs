@@ -1,6 +1,6 @@
-# Visual & System Walkthrough - Video Synchronizer Extension
+# Visual & System Walkthrough - Remote Video Synchronizer (RVS) Extension
 
-This walkthrough details the successfully implemented real-time Chrome Extension Video Synchronizer (Conciliator) prototype and its signaling backend server.
+This walkthrough details the successfully implemented real-time Chrome Extension Remote Video Synchronizer (RVS) prototype and its signaling backend server.
 
 ---
 
@@ -15,7 +15,7 @@ To test this prototype locally between two tabs or windows representing two remo
    npm start
    ```
 3. It will output:
-   `WebSocket Signaling Server running on ws://127.0.0.1:8080`
+   `Remote Video Synchronizer (RVS) Signaling Server running on ws://127.0.0.1:8080`
 
 ### Step 2: Install the Chrome Extension Unpacked
 1. Open Google Chrome.
@@ -43,24 +43,24 @@ To test this prototype locally between two tabs or windows representing two remo
 
 ## 🛠️ Architecture and Engineering Highlights
 
-### 1. Minimal Signaling Server ([server.js](file:///home/levil/vc/server.js))
+### 1. Minimal Signaling Server ([server.js](file:///home/levil/rvs/server.js))
 A highly optimized, server-side room mediator that enforces the target pairs criteria:
 - Restricts each room strictly to a **maximum of 2 peers**.
 - Listens locally on `127.0.0.1:8080` (preventing external exposure during test cycles).
 - Automates client disconnect cleanups and notifies remaining peers in real time.
 
-### 2. Manifest V3 Extension ([manifest.json](file:///home/levil/vc/extension/manifest.json))
+### 2. Manifest V3 Extension ([manifest.json](file:///home/levil/rvs/extension/manifest.json))
 Constructed fully inside the Chrome Manifest V3 specification:
 - Requests permissions: `activeTab`, `storage`, and `clipboardRead` (to support seamless one-click Room ID pasting).
 - Scopes injection hosts strictly to YouTube and Netflix domains.
 
-### 3. ephemereal Popup UI ([popup.html](file:///home/levil/vc/extension/popup.html) / [popup.js](file:///home/levil/vc/extension/popup.js))
+### 3. ephemereal Popup UI ([popup.html](file:///home/levil/rvs/extension/popup.html) / [popup.js](file:///home/levil/rvs/extension/popup.js))
 A dark-themed interface built using vanilla, responsive elements:
 - Connects input actions directly to active tabs.
 - Triggers background status polling to render peer state and calculated RTT values on-the-fly.
 - **Helper Actions Row**: Features a **Generate** button (creates random `SYNC-XXXXXX` room IDs), a **Copy** button (transfers current ID to clipboard with fluid visual feedback), and a **Paste** button (retrieves clipboard IDs with secure console fallback warnings).
 
-### 4. Advanced Injected Logic ([content.js](file:///home/levil/vc/extension/content.js))
+### 4. Advanced Injected Logic ([content.js](file:///home/levil/rvs/extension/content.js))
 The centerpiece of the application:
 - **Dynamic DOM Discovery**: Constantly searches for active `<video>` tags to automatically recover from dynamic Single Page Application (SPA) DOM loads.
 - **State Lock Synchronization**: Sets an `ignoreSyncEvents` lock when executing programmatic actions (`video.play()`, `video.currentTime = X`), preventing endless message loops.

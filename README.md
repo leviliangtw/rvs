@@ -1,4 +1,4 @@
-# 🎬 Video Synchronizer
+# 🎬 Remote Video Synchronizer (RVS)
 
 [![Chrome Extension](https://img.shields.io/badge/Chrome_Extension-Manifest_V3-blue.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Signaling Server](https://img.shields.io/badge/Signaling_Server-Node.js_/_ws-green.svg)](https://github.com/websockets/ws)
