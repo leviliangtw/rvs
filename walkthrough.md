@@ -58,7 +58,7 @@ Constructed fully inside the Chrome Manifest V3 specification:
 A dark-themed interface built using vanilla, responsive elements:
 - Connects input actions directly to active tabs.
 - Triggers background status polling to render peer state and calculated RTT values on-the-fly.
-- **Helper Actions Row**: Features a **Generate** button (creates random `SYNC-XXXXXX` room IDs), a **Copy** button (transfers current ID to clipboard with fluid visual feedback), and a **Paste** button (retrieves clipboard IDs with secure console fallback warnings).
+- **Helper Actions Row**: Features a **Generate** button (creates random 6-character room IDs), a **Copy** button (transfers current ID to clipboard with fluid visual feedback), and a **Paste** button (retrieves clipboard IDs with secure console fallback warnings).
 
 ### 4. Advanced Injected Logic ([content.js](file:///home/levil/rvs/extension/content.js))
 The centerpiece of the application:

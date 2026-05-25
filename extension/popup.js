@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Generate Room ID
   genBtn.addEventListener('click', () => {
-    const randomCode = 'SYNC-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+    const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     roomIdInput.value = randomCode;
     chrome.storage.local.set({ savedRoomId: randomCode });
   });
