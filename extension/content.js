@@ -1,286 +1,224 @@
-// Global states
-let socket = null;
+const isNetflix = window.location.hostname.includes('netflix.com');
+
+// Local state — kept in sync with background via port messages
 let connectionStatus = 'Disconnected';
 let peersCount = 0;
-let oneWayLatency = 0; // in milliseconds
+let oneWayLatency = 0;
 let ignoreSyncEvents = false;
-let currentRoomId = null;
-let pingInterval = null;
 
 let videoElement = null;
 let eventListenersBound = false;
 
-console.log('[Sync] Remote Video Synchronizer (RVS) Extension content script injected.');
+// Sync command parked while the video element isn't in the DOM yet (YouTube/direct path).
+let pendingSyncMsg = null;
 
-// Initialize video element discovery
+// Netflix main-world bridge command sequencing + ack-driven event re-enable
+let cmdSeq = 0;
+let ignoreResetTimer = null;
+
+// Persistent port to background service worker.
+// Running the WebSocket there bypasses the page's Content Security Policy (Netflix blocks
+// ws:// connections initiated from content scripts via its strict connect-src CSP).
+// The open port also keeps the MV3 service worker alive for the lifetime of the tab.
+const port = chrome.runtime.connect({ name: 'rvs-sync' });
+
+console.log('[RVS] Content script injected.');
+
 findAndBindVideo();
-updateBackgroundStatus('Disconnected');
 
-// Keep searching for video element in case of dynamic SPA navigation (YouTube/Netflix page changes)
-const searchInterval = setInterval(() => {
-  if (!eventListenersBound) {
-    findAndBindVideo();
-  }
-}, 2000);
+// MutationObserver reacts instantly when the SPA adds/replaces the <video> element.
+// Used for the READ path on both sites (capturing local user actions) and the
+// WRITE path on YouTube.
+const videoObserver = new MutationObserver(() => {
+  if (!eventListenersBound) findAndBindVideo();
+});
+videoObserver.observe(document.documentElement, { childList: true, subtree: true });
 
-// Find video element and bind sync events
 function findAndBindVideo() {
   const video = document.querySelector('video');
-  if (video) {
-    videoElement = video;
-    bindVideoEvents(video);
+  if (!video) return;
+
+  videoElement = video;
+  bindVideoEvents(video);
+
+  // Drain a parked command now that the video exists (YouTube/direct path)
+  if (pendingSyncMsg) {
+    const { msg, timer } = pendingSyncMsg;
+    pendingSyncMsg = null;
+    clearTimeout(timer);
+    applySync(msg);
   }
 }
 
 function bindVideoEvents(video) {
   if (eventListenersBound) return;
 
-  console.log('[Sync] Injected native video listeners successfully.');
+  console.log('[RVS] Video element found, listeners attached.');
 
   video.addEventListener('play', () => {
     if (ignoreSyncEvents) return;
-    console.log('[Sync] Local play event captured at:', video.currentTime);
-    sendSyncMessage({ action: 'play', time: video.currentTime });
+    port.postMessage({ action: 'play', time: video.currentTime });
   });
 
   video.addEventListener('pause', () => {
     if (ignoreSyncEvents) return;
-    console.log('[Sync] Local pause event captured.');
-    sendSyncMessage({ action: 'pause', time: video.currentTime });
+    port.postMessage({ action: 'pause', time: video.currentTime });
   });
 
   video.addEventListener('seeked', () => {
     if (ignoreSyncEvents) return;
-    console.log('[Sync] Local seek event captured. Current time:', video.currentTime);
-    sendSyncMessage({ action: 'seek', time: video.currentTime });
+    port.postMessage({ action: 'seek', time: video.currentTime });
   });
 
   video.addEventListener('ratechange', () => {
     if (ignoreSyncEvents) return;
-    console.log('[Sync] Local playback rate changed to:', video.playbackRate);
-    sendSyncMessage({ action: 'rate', rate: video.playbackRate });
+    port.postMessage({ action: 'rate', rate: video.playbackRate });
   });
 
   eventListenersBound = true;
 }
 
-// Listen for messages from the popup panel
+// Handle messages from popup (CONNECT, GET_STATUS)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  const { action, roomId } = message;
-
-  if (action === 'CONNECT') {
-    connectToSignalingServer(roomId)
-      .then(() => {
-        sendResponse({ success: true });
-      })
-      .catch((err) => {
-        sendResponse({ success: false, error: err.message });
-      });
-    return true; // Keep message channel open for async response
+  if (message.action === 'CONNECT') {
+    connectionStatus = 'Connecting';
+    port.postMessage({ action: 'CONNECT', roomId: message.roomId });
+    sendResponse({ success: true });
+    return;
   }
 
-  if (action === 'GET_STATUS') {
+  if (message.action === 'GET_STATUS') {
     sendResponse({
       status: connectionStatus,
-      peersCount: peersCount,
-      latency: peersCount === 2 ? oneWayLatency : null
+      peersCount,
+      latency: peersCount === 2 ? oneWayLatency : null,
     });
   }
 });
 
-// Establish WebSocket connection to the signaling server
-function connectToSignalingServer(roomId) {
-  return new Promise((resolve, reject) => {
-    try {
-      if (socket) {
-        socket.close();
-      }
+// ----------------------------------------------------------------------------
+// Netflix write path: forward commands to the main-world bridge (player API).
+// Direct <video> writes trigger M7375, so on Netflix we never touch the element.
+// ----------------------------------------------------------------------------
+window.addEventListener('message', (event) => {
+  if (event.source !== window) return;
+  const d = event.data;
+  if (!d || typeof d !== 'object') return;
 
-      currentRoomId = roomId;
-      connectionStatus = 'Connecting';
-      updateBackgroundStatus('Connecting');
-      console.log(`[Sync] Connecting to ${WS_SERVER_URL} for room ${roomId}...`);
-      
-      // Connect to WS signaling server (URL from config.js)
-      socket = new WebSocket(WS_SERVER_URL);
+  if (d.__rvs === 'bridge-ready') {
+    console.log('[RVS] Netflix bridge ready.');
+  } else if (d.__rvs === 'ack') {
+    if (!d.ok) console.warn('[RVS] Bridge command failed:', d.reason);
+    // Resume event capture shortly after the bridge applied the command, so the
+    // native events it produced (play/seeked/...) aren't re-broadcast.
+    clearTimeout(ignoreResetTimer);
+    ignoreResetTimer = setTimeout(() => { ignoreSyncEvents = false; }, 300);
+  }
+});
 
-      socket.onopen = () => {
-        console.log('[Sync] Connected to signaling server. Joining room...');
-        socket.send(JSON.stringify({ action: 'join', room: roomId }));
-        resolve();
-      };
+function applyViaBridge(msg) {
+  ignoreSyncEvents = true;
+  // Safety net: resume capture even if no ack arrives (player never appeared).
+  clearTimeout(ignoreResetTimer);
+  ignoreResetTimer = setTimeout(() => { ignoreSyncEvents = false; }, 4500);
 
-      socket.onmessage = (event) => {
-        handleWebSocketMessage(event.data);
-      };
-
-      socket.onclose = () => {
-        console.log('[Sync] WebSocket connection closed.');
-        cleanupConnection();
-      };
-
-      socket.onerror = (err) => {
-        console.error('[Sync] WebSocket connection error:', err);
-        connectionStatus = 'Disconnected';
-        updateBackgroundStatus('Disconnected');
-        reject(new Error('Signaling server unavailable'));
-      };
-
-    } catch (e) {
-      connectionStatus = 'Disconnected';
-      updateBackgroundStatus('Disconnected');
-      reject(e);
-    }
-  });
+  const offset = oneWayLatency / 1000;
+  const cmd = { __rvs: 'cmd', id: ++cmdSeq, action: msg.action };
+  if (msg.action === 'play' || msg.action === 'seek') {
+    cmd.time = msg.time + offset;
+  } else if (msg.action === 'rate') {
+    cmd.rate = msg.rate;
+  }
+  window.postMessage(cmd, '*');
 }
 
-// Handle real-time synchronization packets from signaling server
-function handleWebSocketMessage(rawMessage) {
+// Resilient seek for the direct (YouTube) path: waits for metadata if not ready.
+function seekVideo(video, targetTime) {
   try {
-    const data = JSON.parse(rawMessage);
-    const { action } = data;
-
-    if (action === 'error') {
-      alert(`[Sync Error] ${data.message}`); // Native alert for prototype simplicity
-      cleanupConnection();
-      return;
+    if (video.readyState >= 1) {
+      video.currentTime = targetTime;
+    } else {
+      video.addEventListener('loadedmetadata', () => {
+        try { video.currentTime = targetTime; } catch (_) {}
+      }, { once: true });
     }
-
-    if (action === 'state') {
-      const prevPeers = peersCount;
-      peersCount = data.peersCount || 0;
-      
-      if (data.status === 'connected') {
-        connectionStatus = 'Connected';
-        updateBackgroundStatus('Connected');
-        console.log(`[Sync] Room state updated. Peers in room: ${peersCount}`);
-        
-        if (peersCount === 2) {
-          startLatencyPings();
-        }
-      } else if (data.status === 'peer_disconnected') {
-        alert('Remote user has disconnected.'); // Native alert for prototype simplicity
-        peersCount = 1;
-        stopLatencyPings();
-      }
-      return;
-    }
-
-    // Locate video element dynamically to ensure fresh DOM references
-    const video = document.querySelector('video');
-    if (!video) {
-      console.warn('[Sync] Received sync command, but no active video element found.');
-      return;
-    }
-
-    // Set lock flag to ignore programmatic event reflections
-    ignoreSyncEvents = true;
-
-    if (action === 'p2p_ping') {
-      // Respond instantly with a p2p_pong packet containing the ping timestamp
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ action: 'p2p_pong', timestamp: data.timestamp }));
-      }
-      ignoreSyncEvents = false;
-      return;
-    }
-
-    if (action === 'p2p_pong') {
-      // Calculate Round-Trip Time (RTT) and average one-way transit delay
-      const rtt = Date.now() - data.timestamp;
-      oneWayLatency = rtt / 2;
-      console.log(`[Sync] Latency updated: RTT = ${rtt}ms, One-Way delay = ${oneWayLatency}ms`);
-      ignoreSyncEvents = false;
-      return;
-    }
-
-    // ----------------------------------------------------
-    // Playback sync execution with latency compensation
-    // ----------------------------------------------------
-    const latencyOffsetSeconds = oneWayLatency / 1000;
-
-    if (action === 'play') {
-      const compensatedTime = Math.min(video.duration || Infinity, data.time + latencyOffsetSeconds);
-      console.log(`[Sync Remote] Action: PLAY, Original Time: ${data.time}s, Compensated: ${compensatedTime}s`);
-      
-      video.currentTime = compensatedTime;
-      video.play().catch(err => console.error('[Sync] Playback failed:', err));
-
-    } else if (action === 'pause') {
-      console.log('[Sync Remote] Action: PAUSE');
-      video.pause();
-
-    } else if (action === 'seek') {
-      const compensatedTime = Math.min(video.duration || Infinity, data.time + latencyOffsetSeconds);
-      console.log(`[Sync Remote] Action: SEEK, Original Time: ${data.time}s, Compensated: ${compensatedTime}s`);
-      
-      video.currentTime = compensatedTime;
-
-    } else if (action === 'rate') {
-      console.log('[Sync Remote] Action: SPEED CHANGE to:', data.rate);
-      video.playbackRate = data.rate;
-    }
-
-    // Release sync events lock after browser finishes rendering and updating state
-    setTimeout(() => {
-      ignoreSyncEvents = false;
-    }, 250);
-
   } catch (err) {
-    console.error('[Sync] Error processing remote synchronization message:', err);
-    ignoreSyncEvents = false;
+    console.warn('[RVS] Seek failed:', err);
   }
 }
 
-// Peer-to-Peer Round-Trip-Time calibration triggers
-function startLatencyPings() {
-  stopLatencyPings();
-  
-  console.log('[Sync] Launching real-time peer RTT latency pings.');
-  pingInterval = setInterval(() => {
-    if (socket && socket.readyState === WebSocket.OPEN && peersCount === 2) {
-      socket.send(JSON.stringify({ action: 'p2p_ping', timestamp: Date.now() }));
+// Apply a remote sync command. Returns false only on the direct path when no
+// video element is available yet (so the caller can park and retry).
+function applySync(msg) {
+  // Netflix: always go through the bridge; it handles player readiness itself.
+  if (isNetflix) {
+    applyViaBridge(msg);
+    return true;
+  }
+
+  // YouTube / direct path
+  if (videoElement && !videoElement.isConnected) {
+    eventListenersBound = false;
+    videoElement = null;
+    findAndBindVideo();
+  }
+  const video = videoElement || document.querySelector('video');
+  if (!video) return false;
+
+  ignoreSyncEvents = true;
+  const offset = oneWayLatency / 1000;
+  const { action } = msg;
+
+  if (action === 'play') {
+    seekVideo(video, Math.min(video.duration || Infinity, msg.time + offset));
+    video.play().catch((err) => console.error('[RVS] Play failed:', err));
+  } else if (action === 'pause') {
+    video.pause();
+  } else if (action === 'seek') {
+    seekVideo(video, Math.min(video.duration || Infinity, msg.time + offset));
+  } else if (action === 'rate') {
+    video.playbackRate = msg.rate;
+  }
+
+  setTimeout(() => { ignoreSyncEvents = false; }, 250);
+  return true;
+}
+
+// Handle sync commands and state updates from background
+port.onMessage.addListener((msg) => {
+  const { action } = msg;
+
+  if (action === 'state') {
+    peersCount = msg.peersCount;
+    if (msg.status === 'connected') {
+      connectionStatus = 'Connected';
+    } else if (msg.status === 'peer_disconnected') {
+      peersCount = 1;
+      alert('Remote user has disconnected.');
     }
-  }, 5000);
-}
-
-function stopLatencyPings() {
-  if (pingInterval) {
-    clearInterval(pingInterval);
-    pingInterval = null;
+    return;
   }
-  oneWayLatency = 0;
-}
 
-// Reset client connection state
-function cleanupConnection() {
-  stopLatencyPings();
-  if (socket) {
-    socket.close();
-    socket = null;
+  if (action === 'latency_update') {
+    oneWayLatency = msg.latency;
+    return;
   }
-  connectionStatus = 'Disconnected';
-  updateBackgroundStatus('Disconnected');
-  peersCount = 0;
-  currentRoomId = null;
-  console.log('[Sync] Cleanup executed. Synchronizer reset.');
-}
 
-// Send standard sync payload to server
-function sendSyncMessage(payload) {
-  if (socket && socket.readyState === WebSocket.OPEN && peersCount === 2) {
-    socket.send(JSON.stringify(payload));
+  if (action === 'error') {
+    alert(`[Sync Error] ${msg.message}`);
+    connectionStatus = 'Disconnected';
+    peersCount = 0;
+    oneWayLatency = 0;
+    return;
   }
-}
 
-// Notify background service worker of current tab status to draw action icon
-function updateBackgroundStatus(status) {
-  try {
-    chrome.runtime.sendMessage({ action: 'UPDATE_STATUS', status: status }, () => {
-      // Ignore runtime errors if popup/background worker context is invalidated
-      const err = chrome.runtime.lastError;
-    });
-  } catch (e) {
-    // Ignore runtime failures
+  // Sync command. On the direct path, park and retry if the video isn't ready.
+  if (!applySync(msg)) {
+    if (pendingSyncMsg) clearTimeout(pendingSyncMsg.timer);
+    const timer = setTimeout(() => {
+      pendingSyncMsg = null;
+      console.warn('[RVS] Sync command dropped: no video after 5s.');
+    }, 5000);
+    pendingSyncMsg = { msg, timer };
   }
-}
+});
