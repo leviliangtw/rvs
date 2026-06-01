@@ -32,6 +32,11 @@ function handlePortMessage(tabId, state, msg) {
     return;
   }
 
+  if (msg.action === 'DISCONNECT') {
+    cleanupSocket(tabId, state);
+    return;
+  }
+
   // Forward video events (play/pause/seek/rate) to server
   if (state.socket && state.socket.readyState === WebSocket.OPEN && state.peersCount === 2) {
     state.socket.send(JSON.stringify(msg));
@@ -59,7 +64,9 @@ function openWebSocket(tabId, state, roomId) {
   socket.onclose = () => cleanupSocket(tabId, state);
 
   socket.onerror = () => {
-    send(state, { action: 'error', message: 'Signaling server unavailable' });
+    // Connection-level failure (server down / unreachable). Mark silent so the
+    // content script drops cleanly to Disconnected instead of alerting.
+    send(state, { action: 'error', message: 'Signaling server unavailable', silent: true });
     cleanupSocket(tabId, state);
   };
 }
