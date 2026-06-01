@@ -8,6 +8,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const copyBtn = document.getElementById('copy-btn');
   const pasteBtn = document.getElementById('paste-btn');
 
+  // Tracks the latest known connection status so the button can toggle behavior.
+  let currentStatus = 'Disconnected';
+
   // Load saved Room ID on opening
   chrome.storage.local.get(['savedRoomId'], (result) => {
     if (result.savedRoomId) {
@@ -55,8 +58,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Handle Connect click
+  // Handle Connect/Disconnect toggle click
   connectBtn.addEventListener('click', () => {
+    // If already connected/connecting, this button disconnects instead.
+    if (currentStatus === 'Connected' || currentStatus === 'Connecting') {
+      sendMessageToActiveTab({ action: 'DISCONNECT' }, (response) => {
+        if (chrome.runtime.lastError) {
+          updateUIForUnsupportedPage();
+          return;
+        }
+        currentStatus = 'Disconnected';
+        statusValue.textContent = 'Disconnected';
+        statusValue.className = 'status-value status-disconnected';
+        setConnectBtnLabel('Disconnected');
+      });
+      return;
+    }
+
     const roomId = roomIdInput.value.trim().toUpperCase();
 
     if (!roomId) {
@@ -75,8 +93,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (response && response.success) {
+        currentStatus = 'Connecting';
         statusValue.textContent = 'Connecting...';
         statusValue.className = 'status-value status-connecting';
+        setConnectBtnLabel('Connecting');
       } else {
         const errMsg = (response && response.error) ? response.error : 'Unknown error';
         alert(`Failed to trigger connection: ${errMsg}`);
@@ -97,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (response) {
         // Update connection status
+        currentStatus = response.status;
         statusValue.textContent = response.status;
         if (response.status === 'Connected') {
           statusValue.className = 'status-value status-connected';
@@ -105,6 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
           statusValue.className = 'status-value status-disconnected';
         }
+        setConnectBtnLabel(response.status);
 
         // Update peer counts
         peersValue.textContent = `${response.peersCount} / 2`;
@@ -120,10 +142,18 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateUIForUnsupportedPage() {
+    currentStatus = 'Disconnected';
     statusValue.textContent = 'Unsupported Page';
     statusValue.className = 'status-value status-disconnected';
     peersValue.textContent = '0 / 2';
     latencyValue.textContent = '-- ms';
+    setConnectBtnLabel('Disconnected');
+  }
+
+  // Button shows "Disconnect" while active, "Connect" otherwise.
+  function setConnectBtnLabel(status) {
+    connectBtn.textContent =
+      (status === 'Connected' || status === 'Connecting') ? 'Disconnect' : 'Connect';
   }
 
   // Helper to send message to the content script of the active tab
