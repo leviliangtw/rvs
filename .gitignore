@@ -76,3 +76,10 @@ Thumbs.db
 
 # System/AI agent related
 .gemini/
+
+# Archives
+*.zip
+*.tar.gz
+*.tar
+*.rar
+*.7z
