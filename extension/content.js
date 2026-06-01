@@ -87,6 +87,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return;
   }
 
+  if (message.action === 'DISCONNECT') {
+    port.postMessage({ action: 'DISCONNECT' });
+    connectionStatus = 'Disconnected';
+    peersCount = 0;
+    oneWayLatency = 0;
+    sendResponse({ success: true });
+    return;
+  }
+
   if (message.action === 'GET_STATUS') {
     sendResponse({
       status: connectionStatus,
@@ -194,7 +203,8 @@ port.onMessage.addListener((msg) => {
       connectionStatus = 'Connected';
     } else if (msg.status === 'peer_disconnected') {
       peersCount = 1;
-      alert('Remote user has disconnected.');
+      // TODO: more robust handling of mid-session disconnects (e.g. pause and alert, or even remove the peer count limit and just alert?)
+      // alert('Remote user has disconnected.');
     }
     return;
   }
@@ -205,10 +215,16 @@ port.onMessage.addListener((msg) => {
   }
 
   if (action === 'error') {
-    alert(`[Sync Error] ${msg.message}`);
     connectionStatus = 'Disconnected';
     peersCount = 0;
     oneWayLatency = 0;
+    // Connection-level failures (e.g. server unavailable) disconnect silently;
+    // actionable server errors (room full, etc.) still surface to the user.
+    if (msg.silent) {
+      console.warn(`[RVS] ${msg.message}`);
+    } else {
+      alert(`[Sync Error] ${msg.message}`);
+    }
     return;
   }
 
