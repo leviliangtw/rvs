@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Remote Video Synchronizer (RVS)",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Synchronizes video playback, speed, and seeking on YouTube and Netflix between remote users.",
   "permissions": [
     "activeTab",
