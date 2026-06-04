@@ -45,7 +45,11 @@ function handlePortMessage(tabId, state, msg) {
 
 function openWebSocket(tabId, state, roomId) {
   if (state.socket) {
-    state.socket.close();
+    // Detach handlers before closing so the old socket's async onclose/onerror
+    // can't fire cleanupSocket() and tear down the new socket we're about to open.
+    const old = state.socket;
+    old.onopen = old.onmessage = old.onclose = old.onerror = null;
+    old.close();
   }
 
   state.roomId = roomId;
