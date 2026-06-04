@@ -24,16 +24,12 @@ jobs:
         id: version
         run: |
           CUR=$(jq -r .version extension/manifest.json)
-          # Find the last commit that actually modified manifest.json before HEAD.
-          # More reliable than HEAD^, which can point at a commit (e.g. a merge)
-          # that never touched the manifest.
-          PREV_COMMIT=$(git log -n 1 --skip=1 --pretty=format:"%H" -- extension/manifest.json)
-          if [ -z "$PREV_COMMIT" ]; then
-            PREV=""
-          else
-            PREV=$(git show "$PREV_COMMIT":extension/manifest.json 2>/dev/null | jq -r .version || echo "")
-          fi
-
+          # Compare the current manifest version against the previous commit on
+          # main (HEAD^ — the state before this push/merge landed), the same way
+          # the test workflow compares against the PR base branch. The trigger
+          # fires on any extension/** change, so a push that edits e.g. content.js
+          # without bumping the version must NOT republish.
+          PREV=$(git show HEAD^:extension/manifest.json 2>/dev/null | jq -r .version || echo "")
           echo "current=$CUR previous=$PREV"
           if [ -z "$PREV" ] || [ "$PREV" = "null" ]; then
             echo "No previous manifest — treating as a new version."
