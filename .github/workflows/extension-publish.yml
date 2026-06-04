@@ -2,6 +2,7 @@ name: Publish Extension
 
 # Publishes to the Chrome Web Store, but ONLY when the version in
 # extension/manifest.json is bumped on main (i.e. after a PR is merged).
+# On a successful publish it also tags the commit and creates a GitHub Release.
 on:
   push:
     branches: [main]
@@ -9,21 +10,30 @@ on:
       - 'extension/**'
 
 permissions:
-  contents: read
+  contents: write # needs write so the workflow can push a tag and create a Release
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          fetch-depth: 2 # need HEAD^ to diff the manifest version
+          fetch-depth: 0 # full history so we can find the previous manifest commit
 
       - name: Check if manifest version was bumped
         id: version
         run: |
           CUR=$(jq -r .version extension/manifest.json)
-          PREV=$(git show HEAD^:extension/manifest.json 2>/dev/null | jq -r .version || echo "")
+          # Find the last commit that actually modified manifest.json before HEAD.
+          # More reliable than HEAD^, which can point at a commit (e.g. a merge)
+          # that never touched the manifest.
+          PREV_COMMIT=$(git log -n 1 --skip=1 --pretty=format:"%H" -- extension/manifest.json)
+          if [ -z "$PREV_COMMIT" ]; then
+            PREV=""
+          else
+            PREV=$(git show "$PREV_COMMIT":extension/manifest.json 2>/dev/null | jq -r .version || echo "")
+          fi
+
           echo "current=$CUR previous=$PREV"
           if [ -z "$PREV" ] || [ "$PREV" = "null" ]; then
             echo "No previous manifest — treating as a new version."
@@ -31,7 +41,7 @@ jobs:
           elif [ "$CUR" = "$PREV" ]; then
             BUMPED=false
           elif [ "$(printf '%s\n%s\n' "$PREV" "$CUR" | sort -V | tail -1)" = "$CUR" ]; then
-            BUMPED=true # CUR is strictly greater than PREV
+            BUMPED=true # sort -V confirms CUR is strictly greater than PREV
           else
             echo "::warning::Version changed but is not greater ($PREV -> $CUR); skipping publish."
             BUMPED=false
@@ -47,7 +57,7 @@ jobs:
 
       - name: Upload & publish to Chrome Web Store
         if: steps.version.outputs.bumped == 'true'
-        uses: mnao305/chrome-extension-upload@v6.0.0
+        uses: mnao305/chrome-extension-upload@fdfe79400af990f5145a319e834aee64907ccff4 # v6.0.0
         with:
           file-path: extension.zip
           extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
@@ -56,10 +66,23 @@ jobs:
           refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
           publish: true
 
+      # Runs only after a successful publish (a failed step above fails the job
+      # and stops here). Tags the commit and attaches the packaged zip.
+      - name: Create GitHub Release
+        if: steps.version.outputs.bumped == 'true'
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        with:
+          tag_name: v${{ steps.version.outputs.version }} # e.g. v1.0.1
+          name: Release v${{ steps.version.outputs.version }}
+          files: extension.zip # also back up the packaged zip on the Release
+          generate_release_notes: true # auto-generate the changelog
+
       - name: Summary
+        if: always()
         run: |
           if [ "${{ steps.version.outputs.bumped }}" = "true" ]; then
-            echo "Published version ${{ steps.version.outputs.version }} to the Chrome Web Store." >> "$GITHUB_STEP_SUMMARY"
+            echo "Published version ${{ steps.version.outputs.version }} to the Chrome Web Store and created Release v${{ steps.version.outputs.version }}." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "No version bump detected — nothing published." >> "$GITHUB_STEP_SUMMARY"
           fi
+
