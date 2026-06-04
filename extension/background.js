@@ -198,6 +198,8 @@ function updateIcon(tabId, status) {
 
   const imageData = ctx.getImageData(0, 0, 32, 32);
   chrome.action.setIcon({ tabId, imageData }, () => {
-    const err = chrome.runtime.lastError;
+    // Access lastError to clear Chrome's "Unchecked runtime.lastError" warning
+    // (setIcon can fail benignly, e.g. the tab closed before this ran).
+    void chrome.runtime.lastError;
   });
 }

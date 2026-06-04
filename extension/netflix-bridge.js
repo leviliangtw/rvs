@@ -15,7 +15,7 @@
   // Resolve the active watch-session player object, or null if not ready.
   function getPlayer() {
     try {
-      const api = window.netflix.appContext.state.playerApp.getAPI();
+      const api = /** @type {any} */ (window).netflix.appContext.state.playerApp.getAPI();
       const vp = api.videoPlayer;
       const sessionIds = vp.getAllPlayerSessionIds() || [];
       // Prefer the main 'watch' session over preview/billboard sessions.

@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const roomIdInput = document.getElementById('room-id');
+  const roomIdInput = /** @type {HTMLInputElement} */ (document.getElementById('room-id'));
   const connectBtn = document.getElementById('connect-btn');
   const statusValue = document.getElementById('status-value');
   const peersValue = document.getElementById('peers-value');
@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load saved Room ID on opening
   chrome.storage.local.get(['savedRoomId'], (result) => {
     if (result.savedRoomId) {
-      roomIdInput.value = result.savedRoomId;
+      roomIdInput.value = String(result.savedRoomId);
     }
   });
 
@@ -62,7 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
   connectBtn.addEventListener('click', () => {
     // If already connected/connecting, this button disconnects instead.
     if (currentStatus === 'Connected' || currentStatus === 'Connecting') {
-      sendMessageToActiveTab({ action: 'DISCONNECT' }, (response) => {
+      sendMessageToActiveTab({ action: 'DISCONNECT' }, () => {
         if (chrome.runtime.lastError) {
           updateUIForUnsupportedPage();
           return;
@@ -104,8 +104,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Periodically poll content script for connection status updates
-  let pollInterval = setInterval(updateStatus, 1000);
+  // Periodically poll content script for connection status updates.
+  // No handle kept: the interval lives for the popup's lifetime and is torn
+  // down automatically when the popup document closes.
+  setInterval(updateStatus, 1000);
   updateStatus(); // Immediate initial check
 
   function updateStatus() {
