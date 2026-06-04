@@ -4,10 +4,18 @@
   "description": "Minimal WebSocket signaling server for Remote Video Synchronizer (RVS) Chrome Extension",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "lint": "eslint ."
   },
   "dependencies": {
     "ws": "^8.17.0"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/chrome": "^0.1.42",
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.3"
+  }
 }
