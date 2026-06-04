@@ -1,0 +1,77 @@
+name: Publish Extension Test
+
+# Uploads the packaged extension to the Chrome Web Store as a DRAFT
+# (publish: false) so you can verify packaging + credentials before a PR
+# is merged. Nothing is submitted for review or made public.
+# Only runs when the PR bumps extension/manifest.json (or on a manual run).
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'extension/**'
+  workflow_dispatch: # allow manual test runs from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  test-upload:
+    runs-on: ubuntu-latest
+    # PRs from forks don't get secrets; only run when secrets are available.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Check if manifest version was bumped
+        id: version
+        run: |
+          CUR=$(jq -r .version extension/manifest.json)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # No PR base to diff against on a manual run — always upload.
+            echo "Manual run — skipping version-bump check."
+            BUMPED=true
+          else
+            # Compare the PR's manifest version against the base branch.
+            git fetch --depth=1 origin "${{ github.base_ref }}"
+            PREV=$(git show "origin/${{ github.base_ref }}":extension/manifest.json 2>/dev/null | jq -r .version || echo "")
+            echo "current=$CUR base=$PREV"
+            if [ -z "$PREV" ] || [ "$PREV" = "null" ]; then
+              echo "No manifest on base — treating as a new version."
+              BUMPED=true
+            elif [ "$CUR" = "$PREV" ]; then
+              BUMPED=false
+            elif [ "$(printf '%s\n%s\n' "$PREV" "$CUR" | sort -V | tail -1)" = "$CUR" ]; then
+              BUMPED=true # sort -V confirms CUR is strictly greater than PREV
+            else
+              echo "::warning::Version changed but is not greater ($PREV -> $CUR); skipping test upload."
+              BUMPED=false
+            fi
+          fi
+          echo "bumped=$BUMPED" >> "$GITHUB_OUTPUT"
+          echo "version=$CUR" >> "$GITHUB_OUTPUT"
+
+      - name: Package extension
+        if: steps.version.outputs.bumped == 'true'
+        run: |
+          cd extension
+          zip -r ../extension.zip . -x '*.DS_Store'
+
+      - name: Upload draft to Chrome Web Store (no publish)
+        if: steps.version.outputs.bumped == 'true'
+        uses: mnao305/chrome-extension-upload@fdfe79400af990f5145a319e834aee64907ccff4 # v6.0.0
+        with:
+          file-path: extension.zip
+          extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
+          client-id: ${{ secrets.CHROME_CLIENT_ID }}
+          client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          publish: false
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ "${{ steps.version.outputs.bumped }}" = "true" ]; then
+            echo "Uploaded draft version ${{ steps.version.outputs.version }} to the Chrome Web Store (not published)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No version bump detected — nothing uploaded." >> "$GITHUB_STEP_SUMMARY"
+          fi
