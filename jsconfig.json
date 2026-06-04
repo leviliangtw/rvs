@@ -3,10 +3,13 @@
     "target": "ES2021",
     "lib": ["ES2021", "DOM", "WebWorker"],
     "checkJs": true,
-    "moduleResolution": "node",
+    "module": "Node16",
+    "moduleResolution": "node16",
     "typeRoots": ["./node_modules/@types"],
     "strict": false,
-    "noImplicitAny": false
+    "noImplicitAny": false,
+    "skipLibCheck": true
   },
-  "include": ["server.js", "extension/**/*.js"]
+  "include": ["server.js", "extension/**/*.js", "extension/**/*.d.ts"],
+  "exclude": ["node_modules"]
 }
