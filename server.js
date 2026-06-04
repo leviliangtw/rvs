@@ -3,7 +3,7 @@ const { WebSocketServer } = require('ws');
 // Port and Host configuration
 // For local dev: defaults to 127.0.0.1:8080
 // For deployment: set HOST=0.0.0.0 PORT=8080 (or your preferred port)
-const PORT = process.env.PORT || 8080;
+const PORT = Number(process.env.PORT) || 8080;
 const HOST = process.env.HOST || '127.0.0.1';
 
 const wss = new WebSocketServer({ port: PORT, host: HOST });
@@ -19,7 +19,7 @@ wss.on('connection', (ws) => {
 
   ws.on('message', (message) => {
     try {
-      const data = JSON.parse(message);
+      const data = JSON.parse(message.toString());
       const { action, room } = data;
 
       if (action === 'join') {
