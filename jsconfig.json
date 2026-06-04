@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "lib": ["ES2021", "DOM", "WebWorker"],
+    "checkJs": true,
+    "moduleResolution": "node",
+    "typeRoots": ["./node_modules/@types"],
+    "strict": false,
+    "noImplicitAny": false
+  },
+  "include": ["server.js", "extension/**/*.js"]
+}
