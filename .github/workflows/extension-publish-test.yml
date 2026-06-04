@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  test-upload:
+  publish-test:
     runs-on: ubuntu-latest
     # PRs from forks don't get secrets; only run when secrets are available.
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
