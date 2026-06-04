@@ -1,129 +1,226 @@
-# Implementation Plan - Remote Video Synchronizer (RVS)
+# Implementation & Architecture - Remote Video Synchronizer (RVS)
 
-A lightweight Chrome Extension prototype (Manifest V3) and minimal WebSocket backend designed to synchronize playback time, play/pause state, and speed of native video players on **YouTube** and **Netflix** in real time for two remote users.
+A lightweight Chrome Extension (Manifest V3) and a minimal WebSocket backend that
+synchronize playback time, play/pause state, and speed of the native video
+players on **YouTube** and **Netflix** in real time between two remote users.
 
-## User Review Required
-
-Please review the simplified, extension-focused architecture below.
-
-> [!IMPORTANT]
-> **Key Architecture Decisions:**
-> 1. **Chrome Extension Form Factor**: Consists of a simple popup (to join a room) and a content script that injects directly into YouTube or Netflix tabs to capture and control the native `<video>` elements.
-> 2. **WebSocket Signaling Server**: A minimal Node.js server (`server.js`) that matches and relays playback events between two users sharing a Room ID.
-> 3. **Minimal State Locking**: To prevent infinite feedback loops, we implement a simple boolean flag (`ignoreSyncEvents`) in the content script that temporarily disables outgoing WebSocket events when applying remote commands.
-> 4. **Native Dialogs**: As requested for MVP simplicity, the extension popup and content script will use native browser dialogues (`alert`, `prompt`) to request Room IDs or show connection states.
-> 
-> TODO(security): Replace native alerts and prompt dialogues with styled DOM modals before graduating to production.
+This document is the design reference: the high-level architecture, the message
+flow between components, and the per-file responsibilities. For local setup see
+the [README](../README.md); for shipping to production see the
+[Deployment Plan](deployment_plan.md).
 
 ---
 
-## Proposed Changes
+## System Architecture
 
-We will create a clean, simple project structure inside the workspace (`/home/levil/rvs`):
-- `/extension`: The Chrome Extension files.
-- `server.js` & `package.json`: The signaling backend.
+RVS has two components:
+
+- **Chrome extension** (`extension/`) — injected into YouTube/Netflix tabs to
+  capture local video events and apply remote sync commands.
+- **Signaling server** (`server.js`) — a lightweight Node.js WebSocket relay that
+  routes messages between exactly two peers per room.
+
+Inside the extension, the WebSocket is **owned by the background service worker**
+(`background.js`), not the content script. This matters for two reasons: Netflix's
+page Content Security Policy blocks `wss://` connections opened from a content
+script, and the open port from `content.js` keeps the MV3 service worker alive for
+the tab's lifetime. The content script captures local `<video>` events and applies
+remote commands; on Netflix, writes go through a MAIN-world bridge
+(`netflix-bridge.js`) that drives the official player API to avoid tamper detection
+(error **M7375**) instead of touching the `<video>` element directly.
+
+### Message Flow
+
+```
+popup.js ──sendMessage──> content.js ──port──> background.js ──WebSocket──> server.js ──> (peer) background.js ──port──> content.js
+```
+
+### Peer Sync Sequence
+
+The sequence below shows how two peers connect, track latency, and synchronize a
+video action:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor PeerA as Peer A (YouTube/Netflix)
+    participant Server as Signaling Server (Node.js/ws)
+    actor PeerB as Peer B (YouTube/Netflix)
+
+    Note over PeerA, Server: Connecting to Room (Max 2 Peers)
+    PeerA->>Server: Connect to Room "MOVIE123"
+    Server-->>PeerA: Connected (1/2 Peers)
+    PeerB->>Server: Connect to Room "MOVIE123"
+    Server-->>PeerB: Connected (2/2 Peers)
+    Server-->>PeerA: Peer Joined (2/2 Peers)
+
+    Note over PeerA, PeerB: Continuous Latency Tracking (Every 5s)
+    PeerA->>Server: Ping Message (t1)
+    Server->>PeerB: Ping Message Forwarded
+    PeerB->>Server: Pong Response
+    Server->>PeerA: Pong Forwarded (t2)
+    Note over PeerA: Calculate Latency:<br/>RTT = t2 - t1<br/>One-Way Delay = RTT / 2
+
+    Note over PeerA, PeerB: Synchronizing Video Action (e.g. Play/Pause/Seek)
+    PeerA->>PeerA: User triggers Seek to 01:30:00
+    Note over PeerA: Lock Event Handlers (ignoreSyncEvents)
+    PeerA->>Server: Send "seek" (time = 90.0, timestamp)
+    Server->>PeerB: Forward "seek" (time = 90.0)
+    Note over PeerB: Lock Event Handlers (ignoreSyncEvents)
+    Note over PeerB: Apply Latency Compensation:<br/>Target Seek Time = 90.0 + OneWayDelay
+    PeerB->>PeerB: Seek video element to Target Seek Time
+    Note over PeerB: Unlock Event Handlers
+    Note over PeerA: Unlock Event Handlers
+```
+
+### Component Diagram
 
 ```mermaid
 graph TD
     subgraph "Signaling Server (Node.js)"
         S["server.js"]
-        WS["ws://localhost:8080"]
+        WS["ws://127.0.0.1:8080 (wss:// in prod)"]
     end
     subgraph "Chrome Extension (Browser)"
         P["popup.html / popup.js"]
         CS["content.js"]
+        BG["background.js (service worker · owns WebSocket)"]
+        NB["netflix-bridge.js (MAIN world · Netflix only)"]
         V["video element on YouTube/Netflix"]
     end
 
     S --- WS
-    P -->|Sends Room ID| CS
-    CS ---|WebSocket Connection| WS
-    CS ---|Controls Native Player| V
+    P -->|Room ID / actions| CS
+    CS <-->|port 'rvs-sync'| BG
+    BG <-->|WebSocket| WS
+    CS -->|YouTube: direct control| V
+    CS -->|Netflix: postMessage cmd| NB
+    NB -->|official player API| V
 ```
-
-### 1. Signaling Backend
-
-A minimal server to pair two WebSocket connections matching the same Room ID and relay event payloads.
-
-#### [NEW] [package.json](file:///home/levil/rvs/package.json)
-- Declares dependencies: `"ws": "^8.17.0"`.
-- Simple start script: `"start": "node server.js"`.
-
-#### [NEW] [server.js](file:///home/levil/rvs/server.js)
-- Runs a WebSocket server on `127.0.0.1:8080`.
-- Manages rooms. When a user connects and joins a room, they are stored.
-- Supports exactly two users per room.
-- Relays sync messages (`play`, `pause`, `seek`, `rate`) directly to the peer in the same room.
-- Relays latency ping/pong payloads between peers to enable direct P2P RTT measurements.
 
 ---
 
+## Component Design
+
+### 1. Signaling Backend
+
+A minimal server that pairs two WebSocket connections sharing a Room ID and relays
+event payloads between them.
+
+#### [`package.json`](../package.json)
+- Declares the runtime dependency `ws`.
+- Start script: `npm start` → `node server.js`.
+
+#### [`server.js`](../server.js)
+- Runs a WebSocket server, binding to `127.0.0.1:8080` by default (`HOST`/`PORT`
+  env vars override for production).
+- Holds rooms in-memory as a `Map<roomId, WebSocket[]>`, **max 2 peers per room**.
+- On `join`, registers the socket in its room; blindly relays every other packet
+  (`play`, `pause`, `seek`, `rate`, `p2p_ping`, `p2p_pong`) to the peer.
+- Cleans up on disconnect and notifies the remaining peer.
+
 ### 2. Chrome Extension
 
-A standard Chrome Extension that interacts directly with active tabs.
+#### [`extension/manifest.json`](../extension/manifest.json)
+- Manifest V3. Requests `activeTab`, `storage`, and `clipboardRead` permissions.
+- Host permissions scoped to `*://*.youtube.com/*` and `*://*.netflix.com/*`.
+- Registers the popup action, the `content.js` content script, and the
+  Netflix-only MAIN-world `netflix-bridge.js`.
+- The `version` field is the **single source of truth for releases** — see
+  [CONTRIBUTION.md](../CONTRIBUTION.md#4-versioning--releasing).
 
-#### [NEW] [/extension/manifest.json](file:///home/levil/rvs/extension/manifest.json)
-- Standard Manifest V3 structure.
-- Requests permissions: `activeTab`, `storage`, `clipboardRead`.
-- Specifies host permissions for matching sites:
-  - `*://*.youtube.com/*`
-  - `*://*.netflix.com/*`
-- Defines the `popup.html` action and declares `content.js` as an injectable content script.
+#### [`extension/config.js`](../extension/config.js)
+- Single point of configuration: `WS_SERVER_URL`. `ws://127.0.0.1:8080` for local
+  dev, `wss://your-domain` for production. Loaded by `background.js` via
+  `importScripts`.
 
-#### [NEW] [/extension/popup.html](file:///home/levil/rvs/extension/popup.html)
-- Extremely simple popup UI.
-- Contains:
-  - A small header ("Video Sync Prototype").
-  - An input text box for Room ID.
-  - A "Connect / Join Room" button.
-  - Current connection state and measured peer-to-peer latency displays.
+#### [`extension/popup.html`](../extension/popup.html) / [`extension/popup.js`](../extension/popup.js)
+- Dark-themed popup UI. Provides a Room ID input with **Generate** (random
+  6-character ID), **Copy**, and **Paste** helpers, a Connect/Disconnect toggle,
+  and live status / peer-count / RTT readouts.
+- Talks to `content.js` via `chrome.runtime` messaging (`CONNECT`, `GET_STATUS`)
+  and persists the Room ID to `chrome.storage`.
 
-#### [NEW] [/extension/popup.js](file:///home/levil/rvs/extension/popup.js)
-- Retrieves the active tab and sends a message to the content script (`content.js`) containing the Room ID when the user clicks the button.
-- Saves/reads the Room ID to Chrome storage for persistence.
+#### [`extension/background.js`](../extension/background.js)
+- The **service worker that owns the WebSocket.** Holds per-tab state in a
+  `Map<tabId, state>`, connects to `WS_SERVER_URL`, runs the 5-second latency ping
+  loop, and relays sync packets between the content-script port and the server.
+- Emits `latency_update` to the port after each `p2p_pong` and renders the colored
+  toolbar icon (red/yellow/green) via `OffscreenCanvas`.
 
-#### [NEW] [/extension/content.js](file:///home/levil/rvs/extension/content.js)
-- Automatically injected when on YouTube or Netflix.
-- Listens for messages from `popup.js` to trigger a connection to the WebSocket server.
-- Locates the native player: `const video = document.querySelector('video')`.
-- Adds simple native listeners on `video`:
-  - `play`: Send `{ action: 'play', time: video.currentTime }` to WebSocket.
-  - `pause`: Send `{ action: 'pause', time: video.currentTime }` to WebSocket.
-  - `seeked`: Send `{ action: 'seek', time: video.currentTime }` to WebSocket.
-  - `ratechange`: Send `{ action: 'rate', rate: video.playbackRate }` to WebSocket.
-- **Latency Calibration & Measurement**:
-  - Periodically (e.g. every 5 seconds) sends a `p2p_ping` message to the other client containing a timestamp.
-  - When receiving `p2p_ping`, responds immediately with `p2p_pong` echoing the original timestamp.
-  - Upon receiving `p2p_pong`, calculates the Round-Trip Time (`RTT = Date.now() - timestamp`) and updates the estimated one-way peer-to-peer latency (`one_way_latency = RTT / 2`).
-  - Logs the measured latency to the browser console and updates any UI text.
-- **Latency-Compensated Sync Actions**:
-  - Sets `ignoreSyncEvents = true`.
-  - When receiving a remote `play` or `seek` event, compensates for the transit time:
-    - `targetTime = event.time + (one_way_latency / 1000)` (adjusting from milliseconds to seconds).
-    - Performs the programmatic action: `video.currentTime = targetTime; video.play()`.
-  - Resets `ignoreSyncEvents = false` after a small delay (e.g., 250ms) to ensure native event loops finish executing.
+#### [`extension/content.js`](../extension/content.js)
+- Injected on YouTube and Netflix. Finds the `<video>` element via a
+  `MutationObserver` (the SPA injects it ~1–2s after load) and re-binds if replaced.
+- Captures native `play` / `pause` / `seeked` / `ratechange` events and forwards
+  them over the `rvs-sync` port; applies remote commands received over the port.
+- **YouTube** uses the direct path (`video.currentTime`, `video.play()`).
+- **Netflix** posts commands to `netflix-bridge.js` via `window.postMessage`
+  (`{ __rvs: 'cmd', ... }`) and waits for the bridge's `ack`.
+
+#### [`extension/netflix-bridge.js`](../extension/netflix-bridge.js)
+- Runs in the page's **MAIN world** (Netflix only) so it can reach
+  `window.netflix.appContext.state.playerApp.getAPI().videoPlayer`.
+- Drives the official player API (`play` / `pause` / `seek` / `setPlaybackRate`)
+  and acks back (`{ __rvs: 'ack', ok, reason }`), avoiding the M7375 tamper error
+  that direct `<video>` writes trigger on Netflix.
+
+---
+
+## Sync Mechanics
+
+### State Lock (Anti-Feedback)
+Before applying a remote command, `content.js` sets `ignoreSyncEvents = true` so
+the resulting programmatic `play`/`pause`/`seeked` event isn't re-broadcast back to
+the peer. On the YouTube/direct path the lock releases after 250ms via
+`setTimeout`. On the Netflix/bridge path it releases ~300ms after the bridge's
+`ack` (with a 4.5s safety-net timeout), since the bridge applies commands
+asynchronously.
+
+### Latency Compensation
+One-way latency is estimated as `RTT / 2` from the periodic ping/pong. For `play`
+and `seek`, the receiver seeks to `data.time + oneWayLatency / 1000` so both
+players land at the same point despite transmission delay.
+
+---
+
+## Sync Packet Reference
+
+All packets are JSON.
+
+**Client-originated:**
+- `{ action: 'join', room: string }` — sent on connect.
+- `{ action: 'play' | 'pause' | 'seek', time: number }` — video events.
+- `{ action: 'rate', rate: number }` — playback speed change.
+- `{ action: 'p2p_ping', timestamp: number }` — latency probe (every 5s with 2 peers).
+- `{ action: 'p2p_pong', timestamp: number }` — echoed back by the receiver.
+
+**Server-originated** (relayed by `background.js` to the content-script port):
+- `{ action: 'state', status: 'connected' | 'peer_disconnected', peersCount: number }`
+- `{ action: 'error', message: string }`
+- `{ action: 'latency_update', latency }` — emitted by `background.js` after each pong.
 
 ---
 
 ## Verification Plan
 
-We will perform direct local verification using Chrome loaded from the filesystem.
+Verification is performed by loading the unpacked extension in Chrome.
 
 ### Automated Server & Port Verification
-- Start the server on `127.0.0.1:8080`.
-- Verify the server binds correctly and runs locally.
+- Start the server on `127.0.0.1:8080` and confirm it binds and runs locally.
 
 ### Manual Verification
-1. Open Chrome and go to `chrome://extensions`.
-2. Enable "Developer mode" and click "Load unpacked", pointing to the `/extension` directory.
-3. Open two separate Chrome browser windows or tabs side-by-side:
-   - Tab 1: YouTube video (e.g. open source blender video).
-   - Tab 2: Same YouTube video (same URL).
-4. Click the extension popup in Tab 1, enter room `ROOM123`, and click join.
-5. Click the extension popup in Tab 2, enter room `ROOM123`, and click join.
-6. Play, pause, seek, and change speed on Tab 1, verifying that Tab 2 updates instantly and does not cause a feedback stutter.
-7. Repeat action from Tab 2 to Tab 1.
+1. Go to `chrome://extensions`, enable **Developer mode**, **Load unpacked** →
+   the `extension/` directory.
+2. Open two tabs side-by-side on the **same** YouTube or Netflix video.
+3. In Tab 1's popup, enter a Room ID (e.g. `ROOM123`) and **Connect**.
+4. In Tab 2's popup, enter the **same** Room ID and **Connect** (`2 / 2` peers).
+5. Play, pause, seek, and change speed in Tab 1 — Tab 2 should follow instantly
+   with no feedback stutter. Repeat from Tab 2 to Tab 1.
 
-### Security Review Plan
-- **Sanitization**: Ensure incoming Room IDs are checked for format safety before sending.
-- **Port Binding**: Ensure server binds to `127.0.0.1:8080` to prevent exposure.
+See [walkthrough.md](walkthrough.md) for an annotated end-to-end run.
+
+### Security Review
+- **Sanitization**: validate Room ID format before use.
+- **Port binding**: the server binds to `127.0.0.1` by default to prevent exposure
+  during local testing.
+- **No `innerHTML`**: all DOM updates use `textContent` / `createElement`.

@@ -84,6 +84,6 @@ const WS_SERVER_URL = 'wss://your-domain.com'; // must be wss:// for YouTube/Net
 
 ## Production Deployment
 
-See `deployment_plan.md` for full steps. Key constraint: YouTube and Netflix are HTTPS, so Chrome blocks `ws://` — a TLS reverse proxy (Caddy or Nginx) terminating `wss://` is required. The server itself does not handle TLS.
+See `docs/deployment_plan.md` for full steps. Key constraint: YouTube and Netflix are HTTPS, so Chrome blocks `ws://` — a TLS reverse proxy (Caddy or Nginx) terminating `wss://` is required. The server itself does not handle TLS.
 
 Avoid serverless platforms (Vercel, Lambda, Cloudflare Workers) — they don't support persistent WebSocket connections.
