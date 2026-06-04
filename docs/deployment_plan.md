@@ -6,6 +6,18 @@ Two components need to be deployed:
 1. **Signaling Server** (`server.js`) — runs on a publicly reachable host
 2. **Chrome Extension** (`extension/`) — packaged and distributed to users
 
+For the architecture behind these components, see the
+[Implementation Plan](implementation_plan.md). For the release workflow that
+drives the automated extension publish, see [CONTRIBUTION.md](../CONTRIBUTION.md).
+
+> [!IMPORTANT]
+> **HTTPS/WSS requirement.** YouTube and Netflix are HTTPS pages, and Chrome
+> blocks insecure WebSocket (`ws://`) connections from them. In production you
+> **must** terminate TLS and connect via `wss://` — typically through a reverse
+> proxy (Caddy or Nginx). The signaling server itself does not handle TLS. Avoid
+> serverless platforms (AWS Lambda, Vercel, Cloudflare Workers); they don't
+> support persistent WebSocket connections.
+
 ---
 
 ## 1. Signaling Server Deployment
@@ -143,11 +155,33 @@ const WS_SERVER_URL = 'wss://sync.yourdomain.com';
 
 | Option | Audience | Review Time |
 |--------|----------|-------------|
-| **Chrome Web Store** | Public | 1-3 business days |
+| **Chrome Web Store (automated via CI)** | Public | 1-3 business days |
+| **Chrome Web Store (manual upload)** | Public | 1-3 business days |
 | **Developer Mode (sideload)** | Private / small team | Instant |
 | **Enterprise policy push** | Org-wide | Instant |
 
-### Option A: Chrome Web Store (Public)
+### Option A: Chrome Web Store via CI (Recommended)
+
+Publishing is automated by the [`extension-publish.yml`](../.github/workflows/extension-publish.yml)
+GitHub Actions workflow. When a commit that **bumps `extension/manifest.json`
+`version`** lands on `main`, the workflow packages the extension, publishes it to
+the Chrome Web Store, tags the commit `vX.Y.Z`, and creates a GitHub Release.
+
+You don't zip or upload anything by hand — you just merge a version bump. Full
+steps are in [CONTRIBUTION.md → Versioning & Releasing](../CONTRIBUTION.md#4-versioning--releasing).
+
+> [!NOTE]
+> One-time setup: create a [Chrome Developer account](https://chrome.google.com/webstore/devconsole)
+> ($5 fee), do the first manual upload (Option B) to obtain the extension ID, then
+> add `CHROME_EXTENSION_ID`, `CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET`, and
+> `CHROME_REFRESH_TOKEN` as repository secrets. The
+> [`extension-publish-test.yml`](../.github/workflows/extension-publish-test.yml)
+> workflow uploads a draft on version-bumping PRs so you can verify the
+> credentials before merging.
+
+### Option B: Chrome Web Store (Manual Upload)
+
+For the first publish, or if you need to upload without CI:
 
 1. Create a [Chrome Developer account](https://chrome.google.com/webstore/devconsole) ($5 one-time fee)
 2. Zip the extension directory:
@@ -159,7 +193,7 @@ const WS_SERVER_URL = 'wss://sync.yourdomain.com';
 4. Fill in listing details (name, description, screenshots)
 5. Submit for review (typically 1-3 days)
 
-### Option B: Sideload (Private / Testing)
+### Option C: Sideload (Private / Testing)
 
 Share the `extension/` folder directly. Recipients:
 1. Open `chrome://extensions/`
@@ -174,7 +208,8 @@ Share the `extension/` folder directly. Recipients:
 - [ ] Deploy server with `HOST=0.0.0.0` and configure TLS reverse proxy
 - [ ] Verify `wss://` connection works from a YouTube/Netflix tab
 - [ ] Test sync between two browsers on different networks
-- [ ] Package extension `.zip` for distribution
+- [ ] Bump `extension/manifest.json` `version` to release (CI publishes on merge)
+- [ ] Package extension `.zip` for manual distribution (only if not using CI)
 
 ---
 

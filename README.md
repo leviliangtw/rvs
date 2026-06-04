@@ -9,7 +9,7 @@ A premium, high-performance, real-time **Chrome Extension & Signaling Server** t
 
 ---
 
-## 🗺️ System Architecture
+## 🗺️ Architecture at a Glance
 
 RVS has two components:
 
@@ -18,50 +18,11 @@ RVS has two components:
 - **Signaling server** (`server.js`) — a lightweight Node.js WebSocket relay that
   routes messages between exactly two peers per room.
 
-Inside the extension, the WebSocket is **owned by the background service worker**
-(`background.js`), not the content script. This matters for two reasons: Netflix's
-page Content Security Policy blocks `wss://` connections opened from a content
-script, and the open port from `content.js` keeps the MV3 service worker alive for
-the tab's lifetime. The content script captures local `<video>` events and applies
-remote commands; on Netflix, writes go through a MAIN-world bridge
-(`netflix-bridge.js`) that drives the official player API to avoid tamper detection
-(error **M7375**) instead of touching the `<video>` element directly.
-
-The sequence below shows how two peers connect, track latency, and synchronize a
-video action:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor PeerA as Peer A (YouTube/Netflix)
-    participant Server as Signaling Server (Node.js/ws)
-    actor PeerB as Peer B (YouTube/Netflix)
-
-    Note over PeerA, Server: Connecting to Room (Max 2 Peers)
-    PeerA->>Server: Connect to Room "MOVIE123"
-    Server-->>PeerA: Connected (1/2 Peers)
-    PeerB->>Server: Connect to Room "MOVIE123"
-    Server-->>PeerB: Connected (2/2 Peers)
-    Server-->>PeerA: Peer Joined (2/2 Peers)
-
-    Note over PeerA, PeerB: Continuous Latency Tracking (Every 5s)
-    PeerA->>Server: Ping Message (t1)
-    Server->>PeerB: Ping Message Forwarded
-    PeerB->>Server: Pong Response
-    Server->>PeerA: Pong Forwarded (t2)
-    Note over PeerA: Calculate Latency:<br/>RTT = t2 - t1<br/>One-Way Delay = RTT / 2
-
-    Note over PeerA, PeerB: Synchronizing Video Action (e.g. Play/Pause/Seek)
-    PeerA->>PeerA: User triggers Seek to 01:30:00
-    Note over PeerA: Lock Event Handlers (ignoreSyncEvents)
-    PeerA->>Server: Send "seek" (time = 90.0, timestamp)
-    Server->>PeerB: Forward "seek" (time = 90.0)
-    Note over PeerB: Lock Event Handlers (ignoreSyncEvents)
-    Note over PeerB: Apply Latency Compensation:<br/>Target Seek Time = 90.0 + OneWayDelay
-    PeerB->>PeerB: Seek video element to Target Seek Time
-    Note over PeerB: Unlock Event Handlers
-    Note over PeerA: Unlock Event Handlers
-```
+The WebSocket is owned by the background service worker (not the content script),
+and Netflix writes go through a MAIN-world bridge to avoid tamper detection. For
+the full design — service-worker WebSocket ownership, the Netflix bridge, the
+message flow, and a peer-sync sequence diagram — see the
+**[Implementation Plan](docs/implementation_plan.md)**.
 
 ---
 
@@ -89,19 +50,10 @@ sequenceDiagram
 
 | Path | Purpose |
 | :--- | :--- |
-| [`extension/`](extension/) | The packaged Chrome extension (Manifest V3). |
-| ├── [`manifest.json`](extension/manifest.json) | Extension config: permissions (`activeTab`, `storage`, `clipboardRead`) and YouTube/Netflix host matches. |
-| ├── [`config.js`](extension/config.js) | Single point of configuration for the WebSocket server URL. |
-| ├── [`background.js`](extension/background.js) | Service worker that owns the WebSocket, per-tab state, the latency ping loop, and the colored toolbar icon. |
-| ├── [`content.js`](extension/content.js) | Captures local video events and applies remote commands; manages the state lock and talks to `background.js` over a port. |
-| ├── [`netflix-bridge.js`](extension/netflix-bridge.js) | MAIN-world script that drives Netflix's player API to apply commands without triggering M7375. |
-| ├── [`popup.html`](extension/popup.html) | Dark-themed popup UI. |
-| └── [`popup.js`](extension/popup.js) | Popup controller: room lifecycle, connect/disconnect, copy/paste, and status polling. |
+| [`extension/`](extension/) | The packaged Chrome extension (Manifest V3) — popup, content script, service worker, and Netflix bridge. See the [per-file design](docs/implementation_plan.md#component-design). |
 | [`server.js`](server.js) | Node.js WebSocket signaling server; relays between two peers per room. Reads `PORT`/`HOST` env vars. |
-| [`docs/`](docs/) | Project documentation. |
-| ├── [`deployment_plan.md`](docs/deployment_plan.md) | Production deployment guide (TLS/WSS, reverse proxy, systemd). |
-| ├── [`implementation_plan.md`](docs/implementation_plan.md) | Implementation notes and design decisions. |
-| └── [`walkthrough.md`](docs/walkthrough.md) | Verification walkthrough with operational tests. |
+| [`docs/`](docs/) | Project documentation — see [Documentation](#-documentation) below. |
+| [`CONTRIBUTION.md`](CONTRIBUTION.md) | Contributor workflow: branching, linting, and the version-bump release process. |
 | [`task.md`](task.md) | Development milestones and verification checklist. |
 | [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) | Privacy policy for the published extension. |
 
@@ -130,8 +82,8 @@ Install [Node.js](https://nodejs.org/) (v16+).
 
 > For local development the extension must point at this server. Set
 > `WS_SERVER_URL` in [`extension/config.js`](extension/config.js) to
-> `ws://127.0.0.1:8080`. Production uses `wss://` (see
-> [Production Deployment](#-production-deployment)).
+> `ws://127.0.0.1:8080`. Production uses `wss://` (see the
+> [Deployment Plan](docs/deployment_plan.md)).
 
 ### 3. Load the extension in Chrome
 
@@ -169,17 +121,23 @@ tabs):
 
 ---
 
-## 🚢 Production Deployment
+## 📚 Documentation
 
-Before serving external users, review the full
-[Deployment Plan](docs/deployment_plan.md).
+| Document | What's inside |
+| :--- | :--- |
+| [Implementation Plan](docs/implementation_plan.md) | System architecture, message flow, per-file design, sync mechanics, and the peer-sync sequence diagram. |
+| [Deployment Plan](docs/deployment_plan.md) | Production deployment: TLS/WSS reverse proxy, systemd, and automated Chrome Web Store publishing. |
+| [Contribution Guide](CONTRIBUTION.md) | Branching, linting, and the version-bump release workflow. |
+| [Walkthrough](docs/walkthrough.md) | Annotated end-to-end verification run. |
 
-> [!IMPORTANT]
-> **HTTPS/WSS requirement**: On HTTPS pages like YouTube and Netflix, Chrome blocks
-> insecure WebSocket (`ws://`) connections. For production you must terminate TLS and
-> connect via `wss://`, typically through a reverse proxy (e.g. Caddy or Nginx). The
-> server itself does not handle TLS. Avoid serverless platforms — they don't support
-> persistent WebSocket connections.
+---
+
+## 🤝 Contributing
+
+Contributions are welcome. Work on a `type/short-description` branch, run
+`npm run lint`, and open a PR into `main`. **Only bump the extension version when
+you intend to ship a release** — see [CONTRIBUTION.md](CONTRIBUTION.md) for the
+complete workflow.
 
 ---
 
