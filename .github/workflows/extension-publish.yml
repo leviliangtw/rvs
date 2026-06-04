@@ -84,8 +84,10 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           if [ "$BUMPED" = "true" ]; then
-            echo "Published version $VERSION to the Chrome Web Store and created Release v$VERSION." >> "$GITHUB_STEP_SUMMARY"
+            MSG="Published version $VERSION to the Chrome Web Store and created Release v$VERSION."
           else
-            echo "No version bump detected — nothing published." >> "$GITHUB_STEP_SUMMARY"
+            MSG="No version bump detected — nothing published."
           fi
+          echo "::notice::$MSG"           # visible in the run log + as an annotation
+          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"  # markdown on the run summary page
 

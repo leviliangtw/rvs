@@ -74,7 +74,9 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           if [ "$BUMPED" = "true" ]; then
-            echo "Uploaded draft version $VERSION to the Chrome Web Store (not published)." >> "$GITHUB_STEP_SUMMARY"
+            MSG="Uploaded draft version $VERSION to the Chrome Web Store (not published)."
           else
-            echo "No version bump detected — nothing uploaded." >> "$GITHUB_STEP_SUMMARY"
+            MSG="No version bump detected — nothing uploaded."
           fi
+          echo "::notice::$MSG"           # visible in the run log + as an annotation
+          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"  # markdown on the run summary page
