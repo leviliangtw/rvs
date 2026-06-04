@@ -69,9 +69,12 @@ jobs:
 
       - name: Summary
         if: always()
+        env:
+          BUMPED: ${{ steps.version.outputs.bumped }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if [ "${{ steps.version.outputs.bumped }}" = "true" ]; then
-            echo "Uploaded draft version ${{ steps.version.outputs.version }} to the Chrome Web Store (not published)." >> "$GITHUB_STEP_SUMMARY"
+          if [ "$BUMPED" = "true" ]; then
+            echo "Uploaded draft version $VERSION to the Chrome Web Store (not published)." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "No version bump detected — nothing uploaded." >> "$GITHUB_STEP_SUMMARY"
           fi

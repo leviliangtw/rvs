@@ -79,9 +79,12 @@ jobs:
 
       - name: Summary
         if: always()
+        env:
+          BUMPED: ${{ steps.version.outputs.bumped }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if [ "${{ steps.version.outputs.bumped }}" = "true" ]; then
-            echo "Published version ${{ steps.version.outputs.version }} to the Chrome Web Store and created Release v${{ steps.version.outputs.version }}." >> "$GITHUB_STEP_SUMMARY"
+          if [ "$BUMPED" = "true" ]; then
+            echo "Published version $VERSION to the Chrome Web Store and created Release v$VERSION." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "No version bump detected — nothing published." >> "$GITHUB_STEP_SUMMARY"
           fi
