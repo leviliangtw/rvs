@@ -50,6 +50,7 @@ All packets are JSON. Client-originated packets:
 - `{ action: 'join', room: string }` — sent on connect
 - `{ action: 'play'|'pause'|'seek', time: number }` — video events
 - `{ action: 'rate', rate: number }` — playback speed change
+- `{ action: 'media_info', title: string, url: string }` — current video for the "Now Watching" panel (sent on pairing and on navigation; relayed peer-to-peer like any other packet)
 - `{ action: 'p2p_ping', timestamp: number }` — latency probe (sent every 5s when 2 peers present)
 - `{ action: 'p2p_pong', timestamp: number }` — echoed back by receiver
 

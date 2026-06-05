@@ -40,6 +40,13 @@ message flow, and a peer-sync sequence diagram — see the
   element directly. YouTube uses the direct path.
 - **SPA resilience**: A `MutationObserver` hooks into the `<video>` element once the
   single-page app injects it, and re-binds if it's replaced.
+- **"Now Watching" sharing**: The popup shows your peer's current video as a title
+  with a link; clicking it navigates your current tab to "join" what they're watching,
+  and the session auto-rejoins after the page loads. Peer URLs are validated (http(s)
+  YouTube/Netflix only) before linking.
+- **Same-video gating**: Play/pause/seek/speed sync is suppressed when the two peers
+  are on different videos (compared by canonical video ID), and resumes automatically
+  once they're on the same one.
 - **Connect/Disconnect toggle**: The popup connects or cleanly disconnects from a
   room, with a randomized Room ID generator, copy/paste shortcuts, and live status,
   peer-count, and RTT readouts.
