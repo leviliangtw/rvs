@@ -181,6 +181,38 @@ One-way latency is estimated as `RTT / 2` from the periodic ping/pong. For `play
 and `seek`, the receiver seeks to `data.time + oneWayLatency / 1000` so both
 players land at the same point despite transmission delay.
 
+### Now Watching (Media Sharing)
+`content.js` reads the current video's title (from the page DOM — no MAIN-world
+bridge needed) and URL, and emits `media_info` to the peer on pairing and whenever
+the local user navigates to a different video. The popup shows the **peer's**
+current video and turns its URL into a clickable link **only** after validating it
+is an `http(s)` YouTube/Netflix URL — an untrusted scheme (e.g. `javascript:`) is
+shown as plain text, never linked. Links are built with `createElement`/
+`textContent` (no `innerHTML`). Clicking the link navigates the **current** tab
+(via `chrome.tabs.update`) rather than opening a new window, so a user can "join"
+the peer's video in place.
+
+### Session Resume
+"Joining" the peer's video is a full-page navigation, which tears down the content
+script and its sync connection. To make this seamless, `content.js` persists the
+active room in **`sessionStorage`** (`__rvs_active_room`) and auto-rejoins on load.
+`sessionStorage` is per-tab and same-origin, so a brand-new tab starts disconnected
+rather than every YouTube/Netflix tab auto-joining the room. The key is set on
+connect, and cleared on an explicit disconnect or an actionable server error (e.g.
+room full) so a reload doesn't loop trying to rejoin; a *silent* connection-level
+error (server down) keeps it, so a later reload can retry.
+
+### Same-Video Gating
+Playback sync is meaningful only when both peers are on the same video, so
+`content.js` suppresses `play`/`pause`/`seek`/`rate` — both outgoing and incoming —
+whenever it can confirm the peer is on a *different* video. Comparison uses a
+canonical video ID (`getVideoId`: the YouTube `v`/`shorts`/`youtu.be` id or the
+Netflix `/watch/<id>`), so timestamps, playlist, and other query noise don't read
+as a different video. When the peer's video is unknown (pre-handshake) or a URL
+can't be parsed, sync is **not** blocked. `media_info` and latency pings continue
+to flow regardless, so the moment one peer navigates to match the other, sync
+resumes automatically.
+
 ---
 
 ## Sync Packet Reference
@@ -191,6 +223,8 @@ All packets are JSON.
 - `{ action: 'join', room: string }` — sent on connect.
 - `{ action: 'play' | 'pause' | 'seek', time: number }` — video events.
 - `{ action: 'rate', rate: number }` — playback speed change.
+- `{ action: 'media_info', title: string, url: string }` — the sender's current
+  video, for the "Now Watching" panel (sent on pairing and on navigation).
 - `{ action: 'p2p_ping', timestamp: number }` — latency probe (every 5s with 2 peers).
 - `{ action: 'p2p_pong', timestamp: number }` — echoed back by the receiver.
 

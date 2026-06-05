@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const genBtn = document.getElementById('gen-btn');
   const copyBtn = document.getElementById('copy-btn');
   const pasteBtn = document.getElementById('paste-btn');
+  const peerMediaEl = document.getElementById('peer-media');
 
   // Tracks the latest known connection status so the button can toggle behavior.
   let currentStatus = 'Disconnected';
@@ -139,8 +140,58 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
           latencyValue.textContent = '-- ms';
         }
+
+        // Update the peer's "Now Watching" link
+        renderMedia(peerMediaEl, response.peerMedia);
       }
     });
+  }
+
+  // Only http(s) URLs on YouTube/Netflix become clickable links. The peer's URL
+  // is untrusted, so this blocks javascript:/data: and other schemes that would
+  // otherwise execute in the popup when clicked.
+  function isSafeMediaUrl(url) {
+    try {
+      const u = new URL(url);
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+      const host = u.hostname.toLowerCase();
+      return /(^|\.)youtube\.com$/.test(host)
+        || host === 'youtu.be'
+        || /(^|\.)netflix\.com$/.test(host);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Render a media entry into `el` as a hyperlink (or plain text if the URL isn't
+  // a trusted, clickable one). Built with createElement/textContent — never
+  // innerHTML — so a malicious title/URL can't inject markup.
+  function renderMedia(el, media) {
+    el.replaceChildren();
+    if (!media || !media.url) {
+      el.textContent = '—';
+      el.removeAttribute('title');
+      return;
+    }
+
+    const label = media.title || media.url;
+    el.setAttribute('title', label); // full title on hover (value is ellipsized)
+
+    if (isSafeMediaUrl(media.url)) {
+      const link = document.createElement('a');
+      link.href = media.url;
+      link.textContent = label;
+      // Navigate the current tab instead of opening a new window — clicking the
+      // peer's title "joins" what they're watching in place.
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        chrome.tabs.update({ url: media.url });
+        window.close();
+      });
+      el.appendChild(link);
+    } else {
+      el.textContent = label; // untrusted URL: show the title, but not as a link
+    }
   }
 
   function updateUIForUnsupportedPage() {
@@ -150,6 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
     peersValue.textContent = '0 / 2';
     latencyValue.textContent = '-- ms';
     setConnectBtnLabel('Disconnected');
+    renderMedia(peerMediaEl, null);
   }
 
   // Button shows "Disconnect" while active, "Connect" otherwise.
