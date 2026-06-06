@@ -63,6 +63,29 @@ function clearActiveRoom() {
   try { sessionStorage.removeItem(ACTIVE_ROOM_KEY); } catch (_) {}
 }
 
+// Per-tab "prefill" Room ID: the ID the popup shows before the user connects.
+// Persisted separately from the active room (so it never triggers auto-rejoin on
+// reload), so reopening the popup on this tab keeps the *same* suggested ID
+// instead of generating a fresh random one each time. isRoomPrefilled() — "has
+// this tab been seeded yet?" — is just whether that key is set, so the flag
+// lives in sessionStorage (per-tab) rather than resetting with the popup.
+const PREFILLED_ROOM_KEY = '__rvs_prefilled_room';
+
+function getPrefilledRoom() {
+  try { return sessionStorage.getItem(PREFILLED_ROOM_KEY); } catch (_) { return null; }
+}
+function setPrefilledRoom(roomId) {
+  try { sessionStorage.setItem(PREFILLED_ROOM_KEY, roomId); } catch (_) {}
+}
+function isRoomPrefilled() {
+  return getPrefilledRoom() !== null;
+}
+
+// Random 6-char Room ID (A-Z0-9), matching the popup's Generate button.
+function generateRoomId() {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
 // ----------------------------------------------------------------------------
 // 4. Port to background service worker + the active player.
 //    Running the WebSocket in background bypasses the page's CSP (Netflix blocks
@@ -247,6 +270,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     lastSharedKey = null;
     peerMedia = null;
     setActiveRoom(message.roomId); // remember the session so it survives navigation
+    setPrefilledRoom(message.roomId); // keep the popup's suggestion in sync with the room in use
     port.postMessage({ action: 'CONNECT', roomId: message.roomId });
     sendResponse({ success: true });
     return;
@@ -265,12 +289,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === 'GET_STATUS') {
+    // Seed a stable per-tab Room ID once, so reopening the popup shows the same
+    // suggested ID instead of generating a new one each time.
+    if (!isRoomPrefilled()) setPrefilledRoom(generateRoomId());
     sendResponse({
       status: connectionStatus,
       peersCount,
       latency: peersCount === 2 ? oneWayLatency : null,
       peerMedia,
-      roomId: getActiveRoom(), // per-tab room (sessionStorage), so the popup reflects this tab
+      // Active (connected) room wins; otherwise the stable per-tab suggestion.
+      // Both come from sessionStorage, so the popup reflects this exact tab.
+      roomId: getActiveRoom() || getPrefilledRoom(),
     });
   }
 });
