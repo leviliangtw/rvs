@@ -97,8 +97,18 @@ if (resumeRoom) {
 // ----------------------------------------------------------------------------
 findAndBindVideo();
 
+// Rebind when the SPA adds OR swaps the <video> element. Netflix replaces the
+// element on an episode change; staying bound to the old (now-detached) one left
+// our READ listeners firing on a dead element, so local actions stopped being
+// broadcast. (Writes are unaffected — the bridge / direct path re-look-up the
+// element.) Re-finding here also re-shares media_info for the new episode.
 const videoObserver = new MutationObserver(() => {
-  if (!eventListenersBound) findAndBindVideo();
+  const current = document.querySelector('video');
+  if (current && current !== videoElement) {
+    eventListenersBound = false;
+    videoElement = null;
+    findAndBindVideo();
+  }
 });
 videoObserver.observe(document.documentElement, { childList: true, subtree: true });
 
