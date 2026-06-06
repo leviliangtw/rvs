@@ -1,11 +1,14 @@
 # 🎬 Remote Video Synchronizer (RVS)
 
+[![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Install-blue.svg?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/remote-video-synchronizer/iibemhaocbfpjmmdeihioookigedahne)
 [![Chrome Extension](https://img.shields.io/badge/Chrome_Extension-Manifest_V3-blue.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Signaling Server](https://img.shields.io/badge/Signaling_Server-Node.js_/_ws-green.svg)](https://github.com/websockets/ws)
 [![Security Audited](https://img.shields.io/badge/Security-Audited-brightgreen.svg)](#-security--safety-guidelines)
 [![License](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
 
 A premium, high-performance, real-time **Chrome Extension & Signaling Server** that synchronizes video playback, seek times, and speed between remote users on **YouTube** and **Netflix**. Engineered with **State Lock Synchronization** and **Latency-Compensated Seeking** to guarantee frame-accurate sync regardless of network delay.
+
+> 📦 **Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/remote-video-synchronizer/iibemhaocbfpjmmdeihioookigedahne)** — no manual loading required.
 
 ---
 
