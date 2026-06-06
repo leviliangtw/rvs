@@ -207,6 +207,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateUIForUnsupportedPage() {
+    // Unsupported pages have no content script, so the status prefill above
+    // never runs. Still seed a fresh Room ID once (guarded so it never clobbers
+    // what the user is typing) so the field is ready to share from any tab.
+    if (!roomPrefilled) {
+      roomPrefilled = true;
+      if (!roomIdInput.value) roomIdInput.value = generateRoomId();
+    }
+
     currentStatus = 'Disconnected';
     statusValue.textContent = 'Unsupported Page';
     statusValue.className = 'status-value status-disconnected';
