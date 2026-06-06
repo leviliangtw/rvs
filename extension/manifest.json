@@ -25,6 +25,7 @@
         "*://*.netflix.com/*"
       ],
       "js": [
+        "players.js",
         "content.js"
       ],
       "run_at": "document_idle"

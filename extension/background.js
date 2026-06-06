@@ -116,7 +116,13 @@ function handleServerMessage(tabId, state, rawMessage) {
       return;
     }
 
-    // Forward sync commands (play/pause/seek/rate) to the content script
+    // Forward sync commands (play/pause/seek/rate) to the content script.
+    // Stamp latency compensation here (where latency is measured) so the content
+    // script applies times verbatim. One-way latency ≈ RTT/2; play/seek aim at a
+    // slightly later position so playback aligns despite transmission delay.
+    if ((action === 'play' || action === 'seek') && typeof data.time === 'number') {
+      data.time += state.oneWayLatency / 1000;
+    }
     send(state, data);
 
   } catch (err) {
