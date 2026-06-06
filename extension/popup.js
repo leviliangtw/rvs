@@ -16,15 +16,21 @@ document.addEventListener('DOMContentLoaded', () => {
   // Tracks the latest known connection status so the button can toggle behavior.
   let currentStatus = 'Disconnected';
 
-  // The Room ID is per-tab: it's prefilled once from the active tab's own
-  // connection (reported by its content script), never from global storage. A
-  // fresh tab with no active room starts blank.
-  let roomPrefilled = false;
+  // The Room ID is per-tab: it's prefilled from the active tab's own state
+  // (reported by its content script), never from global storage. A fresh tab
+  // gets a stable generated ID — the content script persists it in
+  // sessionStorage (isRoomPrefilled), so reopening the popup keeps the same ID
+  // instead of a new random one. We only write the field when it's empty, so we
+  // never clobber what the user is typing.
+
+  // Returns a random 6-char Room ID (A-Z0-9).
+  function generateRoomId() {
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
+  }
 
   // Generate Room ID
   genBtn.addEventListener('click', () => {
-    const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    roomIdInput.value = randomCode;
+    roomIdInput.value = generateRoomId();
   });
 
   // Copy Room ID
@@ -117,12 +123,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (response) {
-        // One-time per-tab prefill: show the room this tab is actually using.
-        // Done here (not on a clobber-prone timer) and guarded so it never
-        // overwrites what the user is typing.
-        if (!roomPrefilled) {
-          roomPrefilled = true;
-          if (response.roomId) roomIdInput.value = response.roomId;
+        // Prefill the field with this tab's room (active room, or the stable
+        // per-tab suggestion the content script persists). Only when empty, so
+        // the 1s poll never overwrites what the user is typing.
+        if (!roomIdInput.value && response.roomId) {
+          roomIdInput.value = response.roomId;
         }
 
         // Update connection status
@@ -201,6 +206,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateUIForUnsupportedPage() {
+    // Unsupported pages have no content script to provide/persist an ID, so seed
+    // one locally when the field is empty — the field is ready to share from any
+    // tab. (Without a content script this can't persist across popup opens.)
+    if (!roomIdInput.value) roomIdInput.value = generateRoomId();
+
     currentStatus = 'Disconnected';
     statusValue.textContent = 'Unsupported Page';
     statusValue.className = 'status-value status-disconnected';
