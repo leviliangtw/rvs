@@ -5,7 +5,6 @@
   "description": "Synchronizes video playback, speed, and seeking on YouTube and Netflix between remote users.",
   "permissions": [
     "activeTab",
-    "storage",
     "clipboardRead"
   ],
   "host_permissions": [
