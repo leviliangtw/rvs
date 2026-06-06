@@ -12,18 +12,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // Tracks the latest known connection status so the button can toggle behavior.
   let currentStatus = 'Disconnected';
 
-  // Load saved Room ID on opening
-  chrome.storage.local.get(['savedRoomId'], (result) => {
-    if (result.savedRoomId) {
-      roomIdInput.value = String(result.savedRoomId);
-    }
-  });
+  // The Room ID is per-tab: it's prefilled once from the active tab's own
+  // connection (reported by its content script), never from global storage. A
+  // fresh tab with no active room starts blank.
+  let roomPrefilled = false;
 
   // Generate Room ID
   genBtn.addEventListener('click', () => {
     const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     roomIdInput.value = randomCode;
-    chrome.storage.local.set({ savedRoomId: randomCode });
   });
 
   // Copy Room ID
@@ -51,7 +48,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const text = await navigator.clipboard.readText();
       if (text) {
         roomIdInput.value = text.trim().toUpperCase();
-        chrome.storage.local.set({ savedRoomId: roomIdInput.value });
       }
     } catch (err) {
       console.warn('Clipboard read restricted:', err);
@@ -83,10 +79,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Save Room ID for convenience
-    chrome.storage.local.set({ savedRoomId: roomId });
-
     // Send connection command to the active tab's content script
+    // (content.js persists the room per-tab in sessionStorage)
     sendMessageToActiveTab({ action: 'CONNECT', roomId: roomId }, (response) => {
       if (chrome.runtime.lastError) {
         updateUIForUnsupportedPage();
@@ -119,6 +113,14 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (response) {
+        // One-time per-tab prefill: show the room this tab is actually using.
+        // Done here (not on a clobber-prone timer) and guarded so it never
+        // overwrites what the user is typing.
+        if (!roomPrefilled) {
+          roomPrefilled = true;
+          if (response.roomId) roomIdInput.value = response.roomId;
+        }
+
         // Update connection status
         currentStatus = response.status;
         statusValue.textContent = response.status;

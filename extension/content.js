@@ -253,6 +253,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       peersCount,
       latency: peersCount === 2 ? oneWayLatency : null,
       peerMedia,
+      roomId: getActiveRoom(), // per-tab room (sessionStorage), so the popup reflects this tab
     });
   }
 });
