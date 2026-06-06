@@ -41,10 +41,10 @@ let oneWayLatency = 0;
 let videoElement = null;
 let isReadEventListenersBound = false;
 
-// "Now Watching" sharing: the peer's current media, and the last URL we shared
-// (so we only re-broadcast when the local user navigates to a different video).
+// "Now Watching" sharing: the peer's current media, and the last url+title we
+// shared (so we only re-broadcast when either actually changes).
 let peerMedia = null;
-let lastSharedUrl = null;
+let lastSharedKey = null;
 
 // ----------------------------------------------------------------------------
 // 3. Per-tab active room, persisted in sessionStorage so a full-page navigation
@@ -216,19 +216,26 @@ function isDifferentVideoFromPeer() {
 
 // Broadcast the local video to the peer. Guarded so we only emit when paired;
 // the background also drops media_info unless two peers are present. Pass
-// force=true to re-send even if the URL hasn't changed (e.g. just after pairing).
+// force=true to re-send even if nothing changed (e.g. just after pairing).
 function shareMediaInfo(force) {
   if (connectionStatus !== 'Connected' || peersCount !== 2) return;
   const media = getLocalMedia();
   if (!media) return;
-  if (!force && media.url === lastSharedUrl) return;
-  lastSharedUrl = media.url;
+  // De-dupe on title *and* url, not url alone: on a Netflix episode change the new
+  // title isn't in the DOM yet when we first fire (getTitle() falls back to
+  // "Netflix"), so keying on url alone would latch that stale title until the next
+  // navigation. With the title in the key, the periodic re-share below corrects it
+  // once the real title settles (same url, changed title).
+  const key = media.url + '\n' + media.title;
+  if (!force && key === lastSharedKey) return;
+  lastSharedKey = key;
   port.postMessage({ action: 'media_info', title: media.title, url: media.url });
 }
 
 // Periodically re-share the local video so the peer follows navigation to a new
-// title (covers SPA route changes that reuse the same <video>). Self-guards on
-// connection state, and only emits when the URL actually changed.
+// title (covers SPA route changes that reuse the same <video>, and titles that
+// settle a beat after the URL). Self-guards on connection state, and only emits
+// when the title/url actually changed.
 setInterval(() => shareMediaInfo(false), 4000);
 
 // ----------------------------------------------------------------------------
@@ -237,7 +244,7 @@ setInterval(() => shareMediaInfo(false), 4000);
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'CONNECT') {
     connectionStatus = 'Connecting';
-    lastSharedUrl = null;
+    lastSharedKey = null;
     peerMedia = null;
     setActiveRoom(message.roomId); // remember the session so it survives navigation
     port.postMessage({ action: 'CONNECT', roomId: message.roomId });
@@ -252,7 +259,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     peersCount = 0;
     oneWayLatency = 0;
     peerMedia = null;
-    lastSharedUrl = null;
+    lastSharedKey = null;
     sendResponse({ success: true });
     return;
   }
