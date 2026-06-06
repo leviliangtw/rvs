@@ -25,6 +25,14 @@ npm run lint                          # ESLint over server.js + extension/
 npx tsc -p jsconfig.json --noEmit     # TypeScript checkJs (JSDoc/ambient types)
 ```
 
+## Contribution Workflow
+
+Work on a `type/short-description` branch and open a PR into `main` — never push
+to `main` directly. **One commit per PR:** squash/amend follow-up changes so each
+merged PR lands as a single commit. Run `npm run lint` before pushing. Only bump
+`extension/manifest.json` `version` in a PR you intend to ship (it triggers the
+Chrome Web Store publish). See [CONTRIBUTION.md](CONTRIBUTION.md) for full detail.
+
 ## Architecture
 
 ### Message Flow

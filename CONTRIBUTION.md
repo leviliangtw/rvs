@@ -10,6 +10,7 @@ Store release.
 ## TL;DR
 
 - Work on a **branch**, open a **PR into `main`** — never push to `main` directly.
+- **One commit per PR.** Squash your work into a single commit before merging.
 - Run `npm run lint` before pushing.
 - **Only bump `extension/manifest.json` `version` when you intend to ship a
   release.** Merging a version bump to `main` automatically publishes to the
@@ -49,6 +50,11 @@ Example: `git checkout -b fix/popup-title-layout`.
 Keep commit messages in the imperative mood (e.g. *"Fix race where reconnecting
 tears down the new WebSocket"*). Open the PR against `main` and let the checks
 run before merging.
+
+**Keep each PR to a single commit.** If you add follow-up changes while a PR is
+in review, fold them back into the one commit (`git commit --amend` and
+`git push --force-with-lease`, or squash before merging) so `main`'s history
+stays one-commit-per-PR. This keeps the log readable and makes reverts clean.
 
 ---
 
@@ -131,6 +137,7 @@ state (the PR base, or `HEAD^` on `main`):
 ## 5. Before You Open a PR — Checklist
 
 - [ ] Branch named `type/short-description`, targeting `main`.
+- [ ] **Single commit** — follow-up changes folded back in (amend/squash).
 - [ ] `npm run lint` passes and code is Prettier-formatted.
 - [ ] No `innerHTML`; Netflix writes still go through `netflix-bridge.js`.
 - [ ] Manually verified sync between two tabs (see
