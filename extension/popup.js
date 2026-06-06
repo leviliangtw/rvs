@@ -9,6 +9,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const pasteBtn = document.getElementById('paste-btn');
   const peerMediaEl = document.getElementById('peer-media');
 
+  // Show the extension version (read from the manifest, so it never drifts).
+  const versionEl = document.getElementById('version');
+  if (versionEl) versionEl.textContent = 'v' + chrome.runtime.getManifest().version;
+
   // Tracks the latest known connection status so the button can toggle behavior.
   let currentStatus = 'Disconnected';
 
