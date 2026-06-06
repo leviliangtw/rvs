@@ -18,13 +18,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // The Room ID is per-tab: it's prefilled once from the active tab's own
   // connection (reported by its content script), never from global storage. A
-  // fresh tab with no active room starts blank.
+  // fresh tab with no active room gets a freshly generated ID so the field is
+  // ready to share immediately.
   let roomPrefilled = false;
+
+  // Returns a random 6-char Room ID (A-Z0-9).
+  function generateRoomId() {
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
+  }
 
   // Generate Room ID
   genBtn.addEventListener('click', () => {
-    const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    roomIdInput.value = randomCode;
+    roomIdInput.value = generateRoomId();
   });
 
   // Copy Room ID
@@ -117,12 +122,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (response) {
-        // One-time per-tab prefill: show the room this tab is actually using.
+        // One-time per-tab prefill: show the room this tab is actually using,
+        // or auto-generate one for a fresh tab so the field is never empty.
         // Done here (not on a clobber-prone timer) and guarded so it never
         // overwrites what the user is typing.
         if (!roomPrefilled) {
           roomPrefilled = true;
-          if (response.roomId) roomIdInput.value = response.roomId;
+          roomIdInput.value = response.roomId || generateRoomId();
         }
 
         // Update connection status
