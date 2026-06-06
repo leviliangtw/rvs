@@ -1,0 +1,32 @@
+name: One Commit Per PR
+
+# Enforces the repo's "one commit per PR" rule (see CONTRIBUTION.md): every PR
+# into main must contain exactly one commit. Fold follow-up changes back in with
+# `git commit --amend` and `git push --force-with-lease`, then re-run this check.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check-commit-count:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify the PR has exactly one commit
+        env:
+          # GitHub computes the PR's commit count for us — no checkout needed.
+          COMMITS: ${{ github.event.pull_request.commits }}
+        run: |
+          echo "This PR contains $COMMITS commit(s)."
+          if [ "$COMMITS" -ne 1 ]; then
+            echo "::error::PRs must contain exactly one commit, but this PR has $COMMITS."
+            echo "Squash your work into a single commit, e.g.:"
+            echo "  git reset --soft \$(git merge-base origin/main HEAD) && git commit"
+            echo "  # or, for follow-ups on an existing commit:"
+            echo "  git commit --amend && git push --force-with-lease"
+            exit 1
+          fi
+          echo "OK — single commit."
