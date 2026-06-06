@@ -39,7 +39,7 @@ let peersCount = 0;
 let oneWayLatency = 0;
 
 let videoElement = null;
-let eventListenersBound = false;
+let isReadEventListenersBound = false;
 
 // "Now Watching" sharing: the peer's current media, and the last URL we shared
 // (so we only re-broadcast when the local user navigates to a different video).
@@ -105,7 +105,7 @@ findAndBindVideo();
 const videoObserver = new MutationObserver(() => {
   const current = document.querySelector('video');
   if (current && current !== videoElement) {
-    eventListenersBound = false;
+    isReadEventListenersBound = false;
     videoElement = null;
     findAndBindVideo();
   }
@@ -117,7 +117,7 @@ function findAndBindVideo() {
   if (!video) return;
 
   videoElement = video;
-  bindVideoEvents(video);
+  bindVideoReadEvents(video);
 
   // A new <video> usually means the SPA navigated to a different title — share it.
   shareMediaInfo(false);
@@ -127,36 +127,36 @@ function findAndBindVideo() {
   player.onVideoReady();
 }
 
-function bindVideoEvents(video) {
-  if (eventListenersBound) return;
+function bindVideoReadEvents(video) {
+  if (isReadEventListenersBound) return;
 
   console.log('[RVS] Video element found, listeners attached.');
 
   // Don't broadcast local actions while the player is applying a remote command
   // (anti-feedback) or while the peer is watching a different video.
-  const shouldSkipBroadcast = () => player.isApplying() || isDifferentVideoFromPeer();
+  const shouldSkipReadBroadcast = () => player.isApplying() || isDifferentVideoFromPeer();
 
   video.addEventListener('play', () => {
-    if (shouldSkipBroadcast()) return;
+    if (shouldSkipReadBroadcast()) return;
     port.postMessage({ action: 'play', time: video.currentTime });
   });
 
   video.addEventListener('pause', () => {
-    if (shouldSkipBroadcast()) return;
+    if (shouldSkipReadBroadcast()) return;
     port.postMessage({ action: 'pause', time: video.currentTime });
   });
 
   video.addEventListener('seeked', () => {
-    if (shouldSkipBroadcast()) return;
+    if (shouldSkipReadBroadcast()) return;
     port.postMessage({ action: 'seek', time: video.currentTime });
   });
 
   video.addEventListener('ratechange', () => {
-    if (shouldSkipBroadcast()) return;
+    if (shouldSkipReadBroadcast()) return;
     port.postMessage({ action: 'rate', rate: video.playbackRate });
   });
 
-  eventListenersBound = true;
+  isReadEventListenersBound = true;
 }
 
 // Backs the direct (YouTube) player: returns the bound <video>, re-finding it if
@@ -164,7 +164,7 @@ function bindVideoEvents(video) {
 // createDirectPlayer so the player file has no implicit dependency on this state.
 function getBoundVideo() {
   if (videoElement && !videoElement.isConnected) {
-    eventListenersBound = false;
+    isReadEventListenersBound = false;
     videoElement = null;
     findAndBindVideo();
   }
