@@ -166,10 +166,16 @@ function send(state, msg) {
   } catch (_) {}
 }
 
-// Reset icon when tab navigates or reloads
+// Repaint the icon to match this tab's real connection state when it navigates
+// or reloads. A SPA soft navigation (e.g. YouTube video -> home and back) fires
+// 'loading' but doesn't drop the port/socket, so the connection is still alive;
+// painting an unconditional red here made the icon lie and stay red. A real
+// reload has no live state yet (the port disconnected), so it correctly shows
+// Disconnected until the session resumes.
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === 'loading') {
-    updateIcon(tabId, 'Disconnected');
+    const state = tabStates.get(tabId);
+    updateIcon(tabId, state ? state.status : 'Disconnected');
   }
 });
 
