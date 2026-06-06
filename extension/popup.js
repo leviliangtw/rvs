@@ -28,18 +28,9 @@ document.addEventListener('DOMContentLoaded', () => {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
   }
 
-  // Generate Room ID
-  genBtn.addEventListener('click', () => {
-    roomIdInput.value = generateRoomId();
-  });
-
-  // Copy Room ID
-  copyBtn.addEventListener('click', async () => {
-    const text = roomIdInput.value.trim().toUpperCase();
-    if (!text) {
-      alert('Room ID is empty.');
-      return;
-    }
+  // Copy the given text to the clipboard and flash the Copy button. Shared by
+  // the Copy button and Regenerate (which auto-copies the fresh ID).
+  async function copyRoomId(text) {
     try {
       await navigator.clipboard.writeText(text);
       const originalText = copyBtn.textContent;
@@ -50,6 +41,24 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       console.error('Clipboard copy failed:', err);
     }
+  }
+
+  // Regenerate Room ID — replace the field with a fresh ID and copy it so it's
+  // ready to share immediately.
+  genBtn.addEventListener('click', () => {
+    const roomId = generateRoomId();
+    roomIdInput.value = roomId;
+    copyRoomId(roomId);
+  });
+
+  // Copy Room ID
+  copyBtn.addEventListener('click', () => {
+    const text = roomIdInput.value.trim().toUpperCase();
+    if (!text) {
+      alert('Room ID is empty.');
+      return;
+    }
+    copyRoomId(text);
   });
 
   // Paste Room ID
