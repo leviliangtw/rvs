@@ -1,10 +1,42 @@
 const isNetflix = window.location.hostname.includes('netflix.com');
 
-// Local state — kept in sync with background via port messages
+// ----------------------------------------------------------------------------
+// 1. Site adapter — the only YouTube/Netflix difference on the READ/metadata side.
+//    Picked once, here, so the rest of this file is site-agnostic.
+// ----------------------------------------------------------------------------
+function makeSite() {
+  if (isNetflix) {
+    return {
+      isWatchPage: () => location.pathname.startsWith('/watch'),
+      // Best-effort title from the page DOM (content scripts share the DOM).
+      getTitle() {
+        const el = document.querySelector('[data-uia="video-title"]');
+        let title = el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
+        if (!title) title = document.title.replace(/\s*-\s*Netflix\s*$/i, '').trim();
+        return title;
+      },
+    };
+  }
+  return {
+    isWatchPage: () => location.pathname === '/watch' || location.pathname.startsWith('/shorts/'),
+    getTitle() {
+      const el = document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1.ytd-watch-metadata');
+      let title = el ? el.textContent.trim() : '';
+      if (!title) title = document.title.replace(/\s*-\s*YouTube\s*$/i, '').trim();
+      return title;
+    },
+  };
+}
+const site = makeSite();
+
+// ----------------------------------------------------------------------------
+// 2. Connection state — mirrored from background purely to answer the popup's
+//    GET_STATUS. The anti-feedback lock and command sequencing live inside the
+//    active player (players.js), not here.
+// ----------------------------------------------------------------------------
 let connectionStatus = 'Disconnected';
 let peersCount = 0;
 let oneWayLatency = 0;
-let ignoreSyncEvents = false;
 
 let videoElement = null;
 let eventListenersBound = false;
@@ -14,9 +46,11 @@ let eventListenersBound = false;
 let peerMedia = null;
 let lastSharedUrl = null;
 
-// Per-tab active room, persisted in sessionStorage so a full-page navigation
-// (e.g. clicking the peer's link to "join" their video) auto-rejoins the room.
-// sessionStorage is per-tab and same-origin, so other/new tabs start disconnected.
+// ----------------------------------------------------------------------------
+// 3. Per-tab active room, persisted in sessionStorage so a full-page navigation
+//    (e.g. clicking the peer's link to "join" their video) auto-rejoins the room.
+//    sessionStorage is per-tab and same-origin, so other/new tabs start fresh.
+// ----------------------------------------------------------------------------
 const ACTIVE_ROOM_KEY = '__rvs_active_room';
 
 function getActiveRoom() {
@@ -29,20 +63,23 @@ function clearActiveRoom() {
   try { sessionStorage.removeItem(ACTIVE_ROOM_KEY); } catch (_) {}
 }
 
-// Sync command parked while the video element isn't in the DOM yet (YouTube/direct path).
-let pendingSyncMsg = null;
-
-// Netflix main-world bridge command sequencing + ack-driven event re-enable
-let cmdSeq = 0;
-let ignoreResetTimer = null;
-
-// Persistent port to background service worker.
-// Running the WebSocket there bypasses the page's Content Security Policy (Netflix blocks
-// ws:// connections initiated from content scripts via its strict connect-src CSP).
-// The open port also keeps the MV3 service worker alive for the lifetime of the tab.
+// ----------------------------------------------------------------------------
+// 4. Port to background service worker + the active player.
+//    Running the WebSocket in background bypasses the page's CSP (Netflix blocks
+//    ws:// connections from content scripts via its strict connect-src). The open
+//    port also keeps the MV3 service worker alive for the lifetime of the tab.
+// ----------------------------------------------------------------------------
 const port = chrome.runtime.connect({ name: 'rvs-sync' });
 
 console.log('[RVS] Content script injected.');
+
+// The write path is fully encapsulated per site (see players.js): YouTube writes
+// the <video> directly; Netflix drives the official player API through the
+// main-world bridge (direct writes there trigger error M7375). Only the direct
+// player needs to reach the bound <video>, so we inject getBoundVideo() into it.
+const player = isNetflix
+  ? window.RVS.createBridgePlayer()
+  : window.RVS.createDirectPlayer({ getVideo: getBoundVideo });
 
 // Resume an active session after a navigation/reload within this tab (e.g. after
 // clicking the peer's link to "join" their video).
@@ -52,11 +89,14 @@ if (resumeRoom) {
   port.postMessage({ action: 'CONNECT', roomId: resumeRoom });
 }
 
+// ----------------------------------------------------------------------------
+// 5. READ path — discover the <video> and capture local user actions.
+//    The SPA injects/replaces the element ~1-2s after load, so we observe the DOM.
+//    On Netflix this path is still active (reads are unchanged); only writes go
+//    through the bridge. The <video> here is effectively read-only on Netflix.
+// ----------------------------------------------------------------------------
 findAndBindVideo();
 
-// MutationObserver reacts instantly when the SPA adds/replaces the <video> element.
-// Used for the READ path on both sites (capturing local user actions) and the
-// WRITE path on YouTube.
 const videoObserver = new MutationObserver(() => {
   if (!eventListenersBound) findAndBindVideo();
 });
@@ -72,13 +112,9 @@ function findAndBindVideo() {
   // A new <video> usually means the SPA navigated to a different title — share it.
   shareMediaInfo(false);
 
-  // Drain a parked command now that the video exists (YouTube/direct path)
-  if (pendingSyncMsg) {
-    const { msg, timer } = pendingSyncMsg;
-    pendingSyncMsg = null;
-    clearTimeout(timer);
-    applySync(msg);
-  }
+  // Drain a command the player parked while waiting for the element (direct path;
+  // no-op on Netflix, which never parks).
+  player.onVideoReady();
 }
 
 function bindVideoEvents(video) {
@@ -86,9 +122,9 @@ function bindVideoEvents(video) {
 
   console.log('[RVS] Video element found, listeners attached.');
 
-  // Don't broadcast local actions while applying a remote command (anti-feedback)
-  // or while the peer is watching a different video.
-  const shouldSkipBroadcast = () => ignoreSyncEvents || isDifferentVideoFromPeer();
+  // Don't broadcast local actions while the player is applying a remote command
+  // (anti-feedback) or while the peer is watching a different video.
+  const shouldSkipBroadcast = () => player.isApplying() || isDifferentVideoFromPeer();
 
   video.addEventListener('play', () => {
     if (shouldSkipBroadcast()) return;
@@ -113,34 +149,28 @@ function bindVideoEvents(video) {
   eventListenersBound = true;
 }
 
-// ----------------------------------------------------------------------------
-// "Now Watching" — share the current video's title + URL with the peer so each
-// user can see (and open) what the other is browsing.
-// ----------------------------------------------------------------------------
-
-// Only share on actual video pages, not the homepage/search/etc.
-function isWatchPage() {
-  if (isNetflix) return location.pathname.startsWith('/watch');
-  return location.pathname === '/watch' || location.pathname.startsWith('/shorts/');
+// Backs the direct (YouTube) player: returns the bound <video>, re-finding it if
+// the SPA swapped the element out, or null if none exists yet. Injected into
+// createDirectPlayer so the player file has no implicit dependency on this state.
+function getBoundVideo() {
+  if (videoElement && !videoElement.isConnected) {
+    eventListenersBound = false;
+    videoElement = null;
+    findAndBindVideo();
+  }
+  return videoElement || document.querySelector('video');
 }
 
-// Best-effort title from the page DOM (content scripts share the DOM, so no
-// MAIN-world bridge is needed here). Falls back to the URL if nothing is found.
+// ----------------------------------------------------------------------------
+// 6. "Now Watching" — share the current video's title + URL with the peer so each
+//    user can see (and open) what the other is browsing.
+// ----------------------------------------------------------------------------
+
+// Best-effort local media, or null when not on a watch page. Falls back to the URL.
 function getLocalMedia() {
-  if (!isWatchPage()) return null;
+  if (!site.isWatchPage()) return null;
   const url = location.href;
-  let title = '';
-
-  if (isNetflix) {
-    const el = document.querySelector('[data-uia="video-title"]');
-    if (el) title = el.textContent.replace(/\s+/g, ' ').trim();
-    if (!title) title = document.title.replace(/\s*-\s*Netflix\s*$/i, '').trim();
-  } else {
-    const el = document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1.ytd-watch-metadata');
-    if (el) title = el.textContent.trim();
-    if (!title) title = document.title.replace(/\s*-\s*YouTube\s*$/i, '').trim();
-  }
-
+  const title = site.getTitle();
   return { title: title || url, url };
 }
 
@@ -186,7 +216,14 @@ function shareMediaInfo(force) {
   port.postMessage({ action: 'media_info', title: media.title, url: media.url });
 }
 
-// Handle messages from popup (CONNECT, GET_STATUS)
+// Periodically re-share the local video so the peer follows navigation to a new
+// title (covers SPA route changes that reuse the same <video>). Self-guards on
+// connection state, and only emits when the URL actually changed.
+setInterval(() => shareMediaInfo(false), 4000);
+
+// ----------------------------------------------------------------------------
+// 7. Popup messages (CONNECT / DISCONNECT / GET_STATUS).
+// ----------------------------------------------------------------------------
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'CONNECT') {
     connectionStatus = 'Connecting';
@@ -221,94 +258,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // ----------------------------------------------------------------------------
-// Netflix write path: forward commands to the main-world bridge (player API).
-// Direct <video> writes trigger M7375, so on Netflix we never touch the element.
+// 8. Sync commands and state updates from background.
 // ----------------------------------------------------------------------------
-window.addEventListener('message', (event) => {
-  if (event.source !== window) return;
-  const d = event.data;
-  if (!d || typeof d !== 'object') return;
-
-  if (d.__rvs === 'bridge-ready') {
-    console.log('[RVS] Netflix bridge ready.');
-  } else if (d.__rvs === 'ack') {
-    if (!d.ok) console.warn('[RVS] Bridge command failed:', d.reason);
-    // Resume event capture shortly after the bridge applied the command, so the
-    // native events it produced (play/seeked/...) aren't re-broadcast.
-    clearTimeout(ignoreResetTimer);
-    ignoreResetTimer = setTimeout(() => { ignoreSyncEvents = false; }, 300);
-  }
-});
-
-function applyViaBridge(msg) {
-  ignoreSyncEvents = true;
-  // Safety net: resume capture even if no ack arrives (player never appeared).
-  clearTimeout(ignoreResetTimer);
-  ignoreResetTimer = setTimeout(() => { ignoreSyncEvents = false; }, 4500);
-
-  const offset = oneWayLatency / 1000;
-  const cmd = { __rvs: 'cmd', id: ++cmdSeq, action: msg.action };
-  if (msg.action === 'play' || msg.action === 'seek') {
-    cmd.time = msg.time + offset;
-  } else if (msg.action === 'rate') {
-    cmd.rate = msg.rate;
-  }
-  window.postMessage(cmd, '*');
-}
-
-// Resilient seek for the direct (YouTube) path: waits for metadata if not ready.
-function seekVideo(video, targetTime) {
-  try {
-    if (video.readyState >= 1) {
-      video.currentTime = targetTime;
-    } else {
-      video.addEventListener('loadedmetadata', () => {
-        try { video.currentTime = targetTime; } catch (_) {}
-      }, { once: true });
-    }
-  } catch (err) {
-    console.warn('[RVS] Seek failed:', err);
-  }
-}
-
-// Apply a remote sync command. Returns false only on the direct path when no
-// video element is available yet (so the caller can park and retry).
-function applySync(msg) {
-  // Netflix: always go through the bridge; it handles player readiness itself.
-  if (isNetflix) {
-    applyViaBridge(msg);
-    return true;
-  }
-
-  // YouTube / direct path
-  if (videoElement && !videoElement.isConnected) {
-    eventListenersBound = false;
-    videoElement = null;
-    findAndBindVideo();
-  }
-  const video = videoElement || document.querySelector('video');
-  if (!video) return false;
-
-  ignoreSyncEvents = true;
-  const offset = oneWayLatency / 1000;
-  const { action } = msg;
-
-  if (action === 'play') {
-    seekVideo(video, Math.min(video.duration || Infinity, msg.time + offset));
-    video.play().catch((err) => console.error('[RVS] Play failed:', err));
-  } else if (action === 'pause') {
-    video.pause();
-  } else if (action === 'seek') {
-    seekVideo(video, Math.min(video.duration || Infinity, msg.time + offset));
-  } else if (action === 'rate') {
-    video.playbackRate = msg.rate;
-  }
-
-  setTimeout(() => { ignoreSyncEvents = false; }, 250);
-  return true;
-}
-
-// Handle sync commands and state updates from background
 port.onMessage.addListener((msg) => {
   const { action } = msg;
 
@@ -360,18 +311,7 @@ port.onMessage.addListener((msg) => {
   // peerMedia is kept current by the media_info handler above.
   if (isDifferentVideoFromPeer()) return;
 
-  // Sync command. On the direct path, park and retry if the video isn't ready.
-  if (!applySync(msg)) {
-    if (pendingSyncMsg) clearTimeout(pendingSyncMsg.timer);
-    const timer = setTimeout(() => {
-      pendingSyncMsg = null;
-      console.warn('[RVS] Sync command dropped: no video after 5s.');
-    }, 5000);
-    pendingSyncMsg = { msg, timer };
-  }
+  // Sync command — the active player applies it (and parks/retries internally
+  // on the direct path if the <video> isn't ready yet).
+  player.apply(msg);
 });
-
-// Periodically re-share the local video so the peer follows navigation to a new
-// title (covers SPA route changes that reuse the same <video>). Self-guards on
-// connection state, and only emits when the URL actually changed.
-setInterval(() => shareMediaInfo(false), 4000);
