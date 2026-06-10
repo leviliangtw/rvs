@@ -16,6 +16,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Tracks the latest known connection status so the button can toggle behavior.
   let currentStatus = 'Disconnected';
 
+  // The push port to this tab's content script (null until connected / on an
+  // unsupported page). Status snapshots are pushed over it; the popup no longer
+  // polls.
+  let port = null;
+
   // The Room ID is per-tab: it's prefilled from the active tab's own state
   // (reported by its content script), never from global storage. A fresh tab
   // gets a stable generated ID — the content script persists it in
@@ -74,20 +79,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Handle Connect/Disconnect toggle click
+  // Handle Connect/Disconnect toggle click. Commands go over the push port; the
+  // resulting status arrives back as a pushed snapshot (no response callback).
   connectBtn.addEventListener('click', () => {
+    if (!port) {
+      updateUIForUnsupportedPage(); // no content script on this tab
+      return;
+    }
+
     // If already connected/connecting, this button disconnects instead.
     if (currentStatus === 'Connected' || currentStatus === 'Connecting') {
-      sendMessageToActiveTab({ action: 'DISCONNECT' }, () => {
-        if (chrome.runtime.lastError) {
-          updateUIForUnsupportedPage();
-          return;
-        }
-        currentStatus = 'Disconnected';
-        statusValue.textContent = 'Disconnected';
-        statusValue.className = 'status-value status-disconnected';
-        setConnectBtnLabel('Disconnected');
-      });
+      port.postMessage({ action: 'DISCONNECT' });
       return;
     }
 
@@ -98,73 +100,97 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Send connection command to the active tab's content script
-    // (content.js persists the room per-tab in sessionStorage)
-    sendMessageToActiveTab({ action: 'CONNECT', roomId: roomId }, (response) => {
-      if (chrome.runtime.lastError) {
-        updateUIForUnsupportedPage();
-        return;
-      }
-
-      if (response && response.success) {
-        currentStatus = 'Connecting';
-        statusValue.textContent = 'Connecting...';
-        statusValue.className = 'status-value status-connecting';
-        setConnectBtnLabel('Connecting');
-      } else {
-        const errMsg = (response && response.error) ? response.error : 'Unknown error';
-        alert(`Failed to trigger connection: ${errMsg}`);
-      }
-    });
+    // content.js persists the room per-tab in sessionStorage and pushes back the
+    // 'Connecting' status immediately.
+    port.postMessage({ action: 'CONNECT', roomId });
   });
 
-  // Periodically poll content script for connection status updates.
-  // No handle kept: the interval lives for the popup's lifetime and is torn
-  // down automatically when the popup document closes.
-  setInterval(updateStatus, 1000);
-  updateStatus(); // Immediate initial check
+  // Open the push port to the active tab's content script. The content script
+  // pushes a snapshot on connect and on every state change, so there's no poll.
+  const MAX_CONNECT_ATTEMPTS = 3; // tolerate the content script not being injected yet
+  let connectAttempts = 0;
 
-  function updateStatus() {
-    sendMessageToActiveTab({ action: 'GET_STATUS' }, (response) => {
-      if (chrome.runtime.lastError) {
+  function connectToTab() {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs || tabs.length === 0 || tabs[0].id == null) {
         updateUIForUnsupportedPage();
         return;
       }
 
-      if (response) {
-        // Prefill the field with this tab's room (active room, or the stable
-        // per-tab suggestion the content script persists). Only when empty, so
-        // the 1s poll never overwrites what the user is typing.
-        if (!roomIdInput.value && response.roomId) {
-          roomIdInput.value = response.roomId;
-        }
+      const p = chrome.tabs.connect(tabs[0].id, { name: 'rvs-popup' });
+      port = p;
+      let gotSnapshot = false;
 
-        // Update connection status
-        currentStatus = response.status;
-        statusValue.textContent = response.status;
-        if (response.status === 'Connected') {
-          statusValue.className = 'status-value status-connected';
-        } else if (response.status === 'Connecting') {
-          statusValue.className = 'status-value status-connecting';
+      p.onMessage.addListener((msg) => {
+        gotSnapshot = true;
+        connectAttempts = 0;
+        // Latency arrives on its own narrow message (~every 5s) so it updates just
+        // that field; full snapshots ('status') re-render everything.
+        if (msg && msg.kind === 'latency') {
+          renderLatency(msg.latency);
         } else {
-          statusValue.className = 'status-value status-disconnected';
+          renderStatus(msg);
         }
-        setConnectBtnLabel(response.status);
+      });
 
-        // Update peer counts
-        peersValue.textContent = `${response.peersCount} / 2`;
-
-        // Update latency readings
-        if (response.latency !== null && response.latency !== undefined) {
-          latencyValue.textContent = `${Math.round(response.latency)} ms`;
+      p.onDisconnect.addListener(() => {
+        void chrome.runtime.lastError; // clear "receiving end does not exist"
+        if (port === p) port = null;
+        // No snapshot means there's likely no content script (yet). On a fresh
+        // page load it may still be injecting, so retry a few times before
+        // declaring the page unsupported. Once we've received snapshots, a
+        // disconnect just means the popup is closing — nothing to do.
+        if (gotSnapshot) return;
+        if (connectAttempts < MAX_CONNECT_ATTEMPTS) {
+          connectAttempts++;
+          setTimeout(connectToTab, 300);
         } else {
-          latencyValue.textContent = '-- ms';
+          updateUIForUnsupportedPage();
         }
-
-        // Update the peer's "Now Watching" link
-        renderMedia(peerMediaEl, response.peerMedia);
-      }
+      });
     });
+  }
+  connectToTab();
+
+  // Apply a pushed status snapshot to the UI.
+  function renderStatus(response) {
+    if (!response) return;
+
+    // Prefill the field with this tab's room (active room, or the stable per-tab
+    // suggestion the content script persists). Only when empty, so a later push
+    // never overwrites what the user is typing.
+    if (!roomIdInput.value && response.roomId) {
+      roomIdInput.value = response.roomId;
+    }
+
+    // Update connection status
+    currentStatus = response.status;
+    statusValue.textContent = response.status;
+    if (response.status === 'Connected') {
+      statusValue.className = 'status-value status-connected';
+    } else if (response.status === 'Connecting') {
+      statusValue.className = 'status-value status-connecting';
+    } else {
+      statusValue.className = 'status-value status-disconnected';
+    }
+    setConnectBtnLabel(response.status);
+
+    // Update peer counts
+    peersValue.textContent = `${response.peersCount} / 2`;
+
+    // Latency is intentionally not handled here — it's owned by its own 'latency'
+    // message (see the port.onMessage branch) so the ~5s refresh never re-renders
+    // the rest of this snapshot.
+
+    // Update the peer's "Now Watching" link
+    renderMedia(peerMediaEl, response.peerMedia);
+  }
+
+  // Render just the latency field. Shared by full snapshots and the standalone
+  // latency push, so the ~5s latency refresh touches only this readout.
+  function renderLatency(latency) {
+    latencyValue.textContent =
+      (latency !== null && latency !== undefined) ? `${Math.round(latency)} ms` : '-- ms';
   }
 
   // Only http(s) URLs on YouTube/Netflix become clickable links. The peer's URL
@@ -183,10 +209,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // The url+title of the media currently rendered, so repeat snapshots (e.g. the
+  // ~5s latency pushes) don't needlessly rebuild the link. `undefined` until the
+  // first render so the initial empty state is always drawn.
+  let lastMediaKey;
+
   // Render a media entry into `el` as a hyperlink (or plain text if the URL isn't
   // a trusted, clickable one). Built with createElement/textContent — never
-  // innerHTML — so a malicious title/URL can't inject markup.
+  // innerHTML — so a malicious title/URL can't inject markup. No-ops when the
+  // media is unchanged from what's already shown.
   function renderMedia(el, media) {
+    const key = media && media.url ? `${media.url}\n${media.title || ''}` : '';
+    if (key === lastMediaKey) return;
+    lastMediaKey = key;
+
     el.replaceChildren();
     if (!media || !media.url) {
       el.textContent = '—';
@@ -233,20 +269,5 @@ document.addEventListener('DOMContentLoaded', () => {
   function setConnectBtnLabel(status) {
     connectBtn.textContent =
       (status === 'Connected' || status === 'Connecting') ? 'Disconnect' : 'Connect';
-  }
-
-  // Helper to send message to the content script of the active tab
-  function sendMessageToActiveTab(message, callback) {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs || tabs.length === 0) {
-        if (callback) callback(null);
-        return;
-      }
-
-      const activeTabId = tabs[0].id;
-      chrome.tabs.sendMessage(activeTabId, message, (response) => {
-        if (callback) callback(response);
-      });
-    });
   }
 });
