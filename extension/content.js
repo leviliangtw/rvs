@@ -313,6 +313,12 @@ if (titleEl) {
 // ----------------------------------------------------------------------------
 let popupPort = null;
 
+// Last latency pushed to the popup (value, or null when reset). The push path
+// still sends it as a narrow message (below) and never as module state; this
+// mirror exists only so the sendMessage fallback's polled snapshot can carry
+// latency, since that path has no separate latency channel.
+let lastLatency = null;
+
 // The snapshot the popup renders. Seeds a stable per-tab Room ID once, so
 // reopening the popup shows the same suggested ID instead of a new random one.
 function buildStatus() {
@@ -341,10 +347,39 @@ function pushStatus() {
 // measurement; clearLatency() resets the readout to '--' (on unpair, or while a new
 // pairing is still measuring). renderStatus never touches latency.
 function pushLatency(latency) {
+  lastLatency = latency;
   if (!popupPort) return;
   try { popupPort.postMessage({ kind: 'latency', latency }); } catch (_) {}
 }
 function clearLatency() { pushLatency(null); }
+
+// Apply a CONNECT/DISCONNECT from the popup. Shared by both transports (the push
+// port and the sendMessage fallback) so they can't drift apart. Neither pushes
+// the snapshot itself — the caller does, the way its transport requires.
+function applyConnect(roomId) {
+  connectionStatus = 'Connecting';
+  lastSharedKey = null;
+  peerMedia = null;
+  setActiveRoom(roomId); // remember the session so it survives navigation
+  setPrefilledRoom(roomId); // keep the popup's suggestion in sync with the room in use
+  port.postMessage({ action: 'CONNECT', roomId });
+}
+function applyDisconnect() {
+  clearActiveRoom(); // explicit disconnect: don't auto-rejoin on reload
+  port.postMessage({ action: 'DISCONNECT' });
+  connectionStatus = 'Disconnected';
+  peersCount = 0;
+  peerMedia = null;
+  lastSharedKey = null;
+  clearLatency();
+}
+
+// Snapshot for the sendMessage fallback. Unlike the push snapshot, latency rides
+// inside it — that transport polls one response and has no separate latency
+// channel, so buildStatus() (used by the push path) must stay latency-free.
+function buildPollSnapshot() {
+  return { ...buildStatus(), latency: lastLatency };
+}
 
 chrome.runtime.onConnect.addListener((p) => {
   if (p.name !== 'rvs-popup') return;
@@ -352,22 +387,11 @@ chrome.runtime.onConnect.addListener((p) => {
 
   p.onMessage.addListener((message) => {
     if (message.action === 'CONNECT') {
-      connectionStatus = 'Connecting';
-      lastSharedKey = null;
-      peerMedia = null;
-      setActiveRoom(message.roomId); // remember the session so it survives navigation
-      setPrefilledRoom(message.roomId); // keep the popup's suggestion in sync with the room in use
-      port.postMessage({ action: 'CONNECT', roomId: message.roomId });
+      applyConnect(message.roomId);
       pushStatus();
     } else if (message.action === 'DISCONNECT') {
-      clearActiveRoom(); // explicit disconnect: don't auto-rejoin on reload
-      port.postMessage({ action: 'DISCONNECT' });
-      connectionStatus = 'Disconnected';
-      peersCount = 0;
-      peerMedia = null;
-      lastSharedKey = null;
+      applyDisconnect();
       pushStatus();
-      clearLatency();
     }
   });
 
@@ -376,6 +400,24 @@ chrome.runtime.onConnect.addListener((p) => {
   });
 
   pushStatus(); // initial snapshot; latency stays '--' until the next measurement arrives
+});
+
+// Fallback popup channel. chrome.tabs.connect (the push port above) throws on some
+// non-Chromium engines — Orion on iOS/iPadOS implements it via an injected
+// executeScript that fails — so there the popup falls back to sendMessage: it polls
+// GET_STATUS and sends CONNECT/DISCONNECT here, each answered with a fresh snapshot
+// (latency included). On Chrome the port path is used and this listener never fires.
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (!message || !message.action) return;
+  if (message.action === 'GET_STATUS') {
+    sendResponse(buildPollSnapshot());
+  } else if (message.action === 'CONNECT') {
+    applyConnect(message.roomId);
+    sendResponse(buildPollSnapshot());
+  } else if (message.action === 'DISCONNECT') {
+    applyDisconnect();
+    sendResponse(buildPollSnapshot());
+  }
 });
 
 // ----------------------------------------------------------------------------
