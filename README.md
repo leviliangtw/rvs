@@ -66,6 +66,7 @@ message flow, and a peer-sync sequence diagram — see the
 | [`CONTRIBUTION.md`](CONTRIBUTION.md) | Contributor workflow: branching, linting, and the version-bump release process. |
 | [`task.md`](task.md) | Development milestones and verification checklist. |
 | [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) | Privacy policy for the published extension. |
+| [`TERMS_OF_SERVICE.md`](TERMS_OF_SERVICE.md) | Terms of Service governing use of the extension and signaling server. |
 
 ---
 
