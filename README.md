@@ -4,7 +4,7 @@
 [![Chrome Extension](https://img.shields.io/badge/Chrome_Extension-Manifest_V3-blue.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Signaling Server](https://img.shields.io/badge/Signaling_Server-Node.js_/_ws-green.svg)](https://github.com/websockets/ws)
 [![Security Audited](https://img.shields.io/badge/Security-Audited-brightgreen.svg)](#-security--safety-guidelines)
-[![License](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-orange.svg)](LICENSE)
 
 A premium, high-performance, real-time **Chrome Extension & Signaling Server** that synchronizes video playback, seek times, and speed between remote users on **YouTube** and **Netflix**. Engineered with **State Lock Synchronization** and **Latency-Compensated Seeking** to guarantee frame-accurate sync regardless of network delay.
 
@@ -154,5 +154,5 @@ complete workflow.
 
 ## 📄 License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for
-details.
+This project is licensed under the Apache License 2.0 — see the [LICENSE](LICENSE)
+file for details.
