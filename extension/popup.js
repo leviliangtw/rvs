@@ -21,6 +21,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // polls.
   let port = null;
 
+  // A CONNECT/DISCONNECT the user clicked before the port was ready (port still
+  // connecting, or a slow page where the content script hasn't injected yet). It's
+  // sent automatically once the port delivers its first status snapshot, so a click
+  // is never silently lost.
+  let pendingCommand = null;
+
   // The Room ID is per-tab: it's prefilled from the active tab's own state
   // (reported by its content script), never from global storage. A fresh tab
   // gets a stable generated ID — the content script persists it in
@@ -80,16 +86,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Handle Connect/Disconnect toggle click. Commands go over the push port; the
-  // resulting status arrives back as a pushed snapshot (no response callback).
+  // resulting status arrives back as a pushed snapshot (no response callback). If
+  // the port isn't ready yet (slow page / content script still injecting), the
+  // command is queued via sendOrQueue() and sent once the port connects — so a
+  // click is never lost and the button always does something.
   connectBtn.addEventListener('click', () => {
-    if (!port) {
-      updateUIForUnsupportedPage(); // no content script on this tab
-      return;
-    }
-
     // If already connected/connecting, this button disconnects instead.
     if (currentStatus === 'Connected' || currentStatus === 'Connecting') {
-      port.postMessage({ action: 'DISCONNECT' });
+      sendOrQueue({ action: 'DISCONNECT' });
       return;
     }
 
@@ -102,16 +106,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // content.js persists the room per-tab in sessionStorage and pushes back the
     // 'Connecting' status immediately.
-    port.postMessage({ action: 'CONNECT', roomId });
+    sendOrQueue({ action: 'CONNECT', roomId });
   });
 
   // Open the push port to the active tab's content script. The content script
   // pushes a snapshot on connect and on every state change, so there's no poll.
-  const MAX_CONNECT_ATTEMPTS = 3; // tolerate the content script not being injected yet
+  // The connect is retried, and can be re-triggered by a user click (see
+  // ensureConnecting), so a content script that's slow to inject on a heavy page
+  // never leaves the popup permanently stuck on "Unsupported Page".
+  const MAX_CONNECT_ATTEMPTS = 6; // ~1.8s of retries before declaring the page unsupported
   let connectAttempts = 0;
+  let reconnectTimer = null;
+  let isConnecting = false;
 
   function connectToTab() {
+    reconnectTimer = null;
+    isConnecting = true;
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      isConnecting = false;
       if (!tabs || tabs.length === 0 || tabs[0].id == null) {
         updateUIForUnsupportedPage();
         return;
@@ -130,26 +142,71 @@ document.addEventListener('DOMContentLoaded', () => {
           renderLatency(msg.latency);
         } else {
           renderStatus(msg);
+          flushPendingCommand(); // port is live and the content script is ready
         }
       });
 
       p.onDisconnect.addListener(() => {
         void chrome.runtime.lastError; // clear "receiving end does not exist"
         if (port === p) port = null;
-        // No snapshot means there's likely no content script (yet). On a fresh
-        // page load it may still be injecting, so retry a few times before
-        // declaring the page unsupported. Once we've received snapshots, a
-        // disconnect just means the popup is closing — nothing to do.
+        // A snapshot means this was a live port now closing (popup closing) —
+        // nothing to do. No snapshot means the content script isn't there yet; on a
+        // fresh page load it may still be injecting, so retry before giving up.
         if (gotSnapshot) return;
-        if (connectAttempts < MAX_CONNECT_ATTEMPTS) {
-          connectAttempts++;
-          setTimeout(connectToTab, 300);
-        } else {
-          updateUIForUnsupportedPage();
-        }
+        scheduleReconnect();
       });
     });
   }
+
+  // Retry the port connect on a bounded budget. When it's exhausted the page is
+  // treated as unsupported — but a user click resets the budget (ensureConnecting),
+  // so the popup is never permanently dead on a page that was just slow to inject.
+  function scheduleReconnect() {
+    if (reconnectTimer || isConnecting) return; // a reconnect is already pending
+    if (connectAttempts >= MAX_CONNECT_ATTEMPTS) {
+      pendingCommand = null; // genuinely no content script — drop the queued intent
+      updateUIForUnsupportedPage();
+      return;
+    }
+    connectAttempts++;
+    reconnectTimer = setTimeout(connectToTab, 300);
+  }
+
+  // Ensure a connect attempt is in flight, resetting the retry budget. Called on a
+  // user action so a page previously declared unsupported (because the content
+  // script was slow) gets a fresh chance instead of staying stuck.
+  function ensureConnecting() {
+    connectAttempts = 0;
+    if (port || isConnecting) return; // already connected / connecting
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    connectToTab();
+  }
+
+  // Send a command now if the port is live; otherwise queue it and (re)connect. The
+  // queued command is flushed once the port delivers a snapshot. The postMessage is
+  // guarded so a port that disconnected mid-use can't throw and swallow the click.
+  function sendOrQueue(message) {
+    if (port) {
+      try {
+        port.postMessage(message);
+        return;
+      } catch (_) {
+        port = null; // disconnected between checks — fall through to reconnect
+      }
+    }
+    pendingCommand = message;
+    ensureConnecting();
+  }
+
+  // Drain the queued command once the port is live. Re-queues on failure so a
+  // disconnect race retries on the next connect rather than dropping the intent.
+  function flushPendingCommand() {
+    if (!pendingCommand || !port) return;
+    const cmd = pendingCommand;
+    pendingCommand = null;
+    try { port.postMessage(cmd); } catch (_) { pendingCommand = cmd; }
+  }
+
   connectToTab();
 
   // Apply a pushed status snapshot to the UI.
