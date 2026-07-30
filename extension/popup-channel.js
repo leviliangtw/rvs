@@ -1,0 +1,53 @@
+// popup-channel.js — the popup's transport to the active tab's content script.
+// Loaded before popup.js (same convention as players.js -> content.js): an IIFE
+// exposing a factory on window.RVS, so popup.js only ever sees send()/watchStatus()
+// and never chrome.tabs.query/sendMessage or the lastError-means-unsupported-page
+// check directly.
+//
+// Exposed on window.RVS rather than relying on cross-script lexical scope, so the
+// coupling to popup.js stays explicit, matching players.js's convention.
+
+(() => {
+  'use strict';
+
+  const STATUS_POLL_INTERVAL_MS = 1000;
+
+  function createPopupChannel() {
+    // Send one message to the active tab's content script. Normalizes "no active
+    // tab" and "no content script there" (chrome.runtime.lastError) to a single
+    // callback(null), so callers never touch chrome.tabs or lastError themselves.
+    function send(message, callback) {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (!tabs || tabs.length === 0 || tabs[0].id == null) {
+          callback(null);
+          return;
+        }
+
+        chrome.tabs.sendMessage(tabs[0].id, message, (response) => {
+          if (chrome.runtime.lastError) {
+            void chrome.runtime.lastError; // clear "unchecked lastError" warning
+            callback(null);
+            return;
+          }
+          callback(response);
+        });
+      });
+    }
+
+    // Poll GET_STATUS immediately and every STATUS_POLL_INTERVAL_MS thereafter.
+    // callback(response) each tick, or callback(null) on an unsupported page.
+    // Returns stop() to clear the interval.
+    function watchStatus(callback) {
+      function tick() {
+        send({ action: 'GET_STATUS' }, callback);
+      }
+      tick();
+      const intervalId = setInterval(tick, STATUS_POLL_INTERVAL_MS);
+      return () => clearInterval(intervalId);
+    }
+
+    return { send, watchStatus };
+  }
+
+  window.RVS = { createPopupChannel };
+})();
