@@ -7,10 +7,6 @@
     "activeTab",
     "clipboardRead"
   ],
-  "host_permissions": [
-    "*://*.youtube.com/*",
-    "*://*.netflix.com/*"
-  ],
   "action": {
     "default_popup": "popup.html"
   },
@@ -20,8 +16,7 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.youtube.com/*",
-        "*://*.netflix.com/*"
+        "<all_urls>"
       ],
       "js": [
         "players.js",
@@ -31,7 +26,7 @@
     },
     {
       "matches": [
-        "*://*.netflix.com/*"
+        "<all_urls>"
       ],
       "js": [
         "netflix-bridge.js"

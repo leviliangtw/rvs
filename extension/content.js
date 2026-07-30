@@ -1,36 +1,20 @@
-const isNetflix = window.location.hostname.includes('netflix.com');
-
-// ----------------------------------------------------------------------------
-// 1. Site adapter — the only YouTube/Netflix difference on the READ/metadata side.
-//    Picked once, here, so the rest of this file is site-agnostic.
-// ----------------------------------------------------------------------------
-function makeSite() {
-  if (isNetflix) {
-    return {
-      isWatchPage: () => location.pathname.startsWith('/watch'),
-      // Best-effort title from the page DOM (content scripts share the DOM).
-      getTitle() {
-        const el = document.querySelector('[data-uia="video-title"]');
-        let title = el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
-        if (!title) title = document.title.replace(/\s*-\s*Netflix\s*$/i, '').trim();
-        return title;
-      },
-    };
-  }
-  return {
-    isWatchPage: () => location.pathname === '/watch' || location.pathname.startsWith('/shorts/'),
-    getTitle() {
-      const el = document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1.ytd-watch-metadata');
-      let title = el ? el.textContent.trim() : '';
-      if (!title) title = document.title.replace(/\s*-\s*YouTube\s*$/i, '').trim();
-      return title;
-    },
-  };
+// Injected on <all_urls> (see manifest — no host_permissions, so the corporate
+// sandbox/DLP policies that block explicit youtube.com/netflix.com host grants
+// don't stop the script from loading at all). CONNECT/DISCONNECT/GET_STATUS
+// (sections 7-8 below) work on any page, so a room can be joined and its status
+// queried before ever navigating to YouTube/Netflix. The hostname check only
+// gates the video-specific integration (site adapter, player, DOM observer) in
+// main() — it must not be a loose substring match, since that would also fire
+// on e.g. "netflix.com.evil.example".
+function isHost(hostname, domain) {
+  return hostname === domain || hostname.endsWith('.' + domain);
 }
-const site = makeSite();
+const hostname = window.location.hostname;
+const isNetflix = isHost(hostname, 'netflix.com');
+const isYouTube = isHost(hostname, 'youtube.com') || hostname === 'youtu.be';
 
 // ----------------------------------------------------------------------------
-// 2. Connection state — mirrored from background purely to answer the popup's
+// 1. Connection state — mirrored from background purely to answer the popup's
 //    GET_STATUS. The anti-feedback lock and command sequencing live inside the
 //    active player (players.js), not here.
 // ----------------------------------------------------------------------------
@@ -38,16 +22,20 @@ let connectionStatus = 'Disconnected';
 let peersCount = 0;
 let oneWayLatency = 0;
 
-let videoElement = null;
-let isReadEventListenersBound = false;
-
 // "Now Watching" sharing: the peer's current media, and the last url+title we
 // shared (so we only re-broadcast when either actually changes).
 let peerMedia = null;
 let lastSharedKey = null;
 
+// The write-path player adapter (players.js) and the media-sharing broadcaster
+// are only created on YouTube/Netflix (see main() below) — left null/unset
+// elsewhere so sections 7-8 can skip video-specific work off-site instead of
+// erroring.
+let player = null;
+let shareMediaInfo = null;
+
 // ----------------------------------------------------------------------------
-// 3. Per-tab active room, persisted in sessionStorage so a full-page navigation
+// 2. Per-tab active room, persisted in sessionStorage so a full-page navigation
 //    (e.g. clicking the peer's link to "join" their video) auto-rejoins the room.
 //    sessionStorage is per-tab and same-origin, so other/new tabs start fresh.
 // ----------------------------------------------------------------------------
@@ -87,22 +75,15 @@ function generateRoomId() {
 }
 
 // ----------------------------------------------------------------------------
-// 4. Port to background service worker + the active player.
-//    Running the WebSocket in background bypasses the page's CSP (Netflix blocks
-//    ws:// connections from content scripts via its strict connect-src). The open
-//    port also keeps the MV3 service worker alive for the lifetime of the tab.
+// 3. Port to background service worker. Running the WebSocket in background
+//    bypasses the page's CSP (Netflix blocks ws:// connections from content
+//    scripts via its strict connect-src). The open port also keeps the MV3
+//    service worker alive for the lifetime of the tab. Opened on every page (not
+//    just YouTube/Netflix) so a room can be joined/left and queried from any tab.
 // ----------------------------------------------------------------------------
 const port = chrome.runtime.connect({ name: 'rvs-sync' });
 
 console.log('[RVS] Content script injected.');
-
-// The write path is fully encapsulated per site (see players.js): YouTube writes
-// the <video> directly; Netflix drives the official player API through the
-// main-world bridge (direct writes there trigger error M7375). Only the direct
-// player needs to reach the bound <video>, so we inject getBoundVideo() into it.
-const player = isNetflix
-  ? window.RVS.createBridgePlayer()
-  : window.RVS.createDirectPlayer({ getVideo: getBoundVideo });
 
 // Resume an active session after a navigation/reload within this tab (e.g. after
 // clicking the peer's link to "join" their video).
@@ -113,10 +94,133 @@ if (resumeRoom) {
 }
 
 // ----------------------------------------------------------------------------
-// 5. READ path — discover the <video> and capture local user actions.
-//    The SPA injects/replaces the element ~1-2s after load, so we observe the DOM.
-//    On Netflix this path is still active (reads are unchanged); only writes go
-//    through the bridge. The <video> here is effectively read-only on Netflix.
+// 4. Canonical video identity + "different video" check. Only touches
+//    peerMedia/location.href (not the site adapter or player), so it's safe to
+//    keep unconditional; section 8 uses it to gate sync-command dispatch.
+// ----------------------------------------------------------------------------
+function getVideoId(url) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    if (host.includes('netflix.com')) {
+      const m = u.pathname.match(/\/watch\/(\d+)/);
+      return m ? `nf:${m[1]}` : null;
+    }
+    if (host === 'youtu.be') return `yt:${u.pathname.slice(1)}`;
+    if (u.pathname.startsWith('/shorts/')) return `yt:${u.pathname.split('/')[2] || ''}`;
+    const v = u.searchParams.get('v');
+    return v ? `yt:${v}` : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// True only when we can confirm the peer is on a *different* video. Unknown
+// (no peer media yet, or an unparseable URL) returns false, so sync isn't blocked
+// during the brief post-pairing handshake or on unrecognized URLs.
+function isDifferentVideoFromPeer() {
+  if (!peerMedia || !peerMedia.url) return false;
+  const local = getVideoId(location.href);
+  const peer = getVideoId(peerMedia.url);
+  if (!local || !peer) return false;
+  return local !== peer;
+}
+
+// ----------------------------------------------------------------------------
+// 5. Video/player integration — YouTube/Netflix only. Everything that touches
+//    the <video> element, the write-path player, or site-specific metadata is
+//    scoped here; connecting to a room and answering GET_STATUS work regardless
+//    of hostname (sections 6-7 below).
+// ----------------------------------------------------------------------------
+if (isYouTube || isNetflix) {
+  main();
+}
+
+function main() {
+
+// Site adapter — the only YouTube/Netflix difference on the READ/metadata side.
+// Picked once, here, so the rest of this function is site-agnostic.
+function makeSite() {
+  if (isNetflix) {
+    return {
+      isWatchPage: () => location.pathname.startsWith('/watch'),
+      // Best-effort title from the page DOM (content scripts share the DOM).
+      getTitle() {
+        const el = document.querySelector('[data-uia="video-title"]');
+        let title = el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
+        if (!title) title = document.title.replace(/\s*-\s*Netflix\s*$/i, '').trim();
+        return title;
+      },
+    };
+  }
+  return {
+    isWatchPage: () => location.pathname === '/watch' || location.pathname.startsWith('/shorts/'),
+    getTitle() {
+      const el = document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1.ytd-watch-metadata');
+      let title = el ? el.textContent.trim() : '';
+      if (!title) title = document.title.replace(/\s*-\s*YouTube\s*$/i, '').trim();
+      return title;
+    },
+  };
+}
+const site = makeSite();
+
+let videoElement = null;
+let isReadEventListenersBound = false;
+
+// The write path is fully encapsulated per site (see players.js): YouTube writes
+// the <video> directly; Netflix drives the official player API through the
+// main-world bridge (direct writes there trigger error M7375). Only the direct
+// player needs to reach the bound <video>, so we inject getBoundVideo() into it.
+player = isNetflix
+  ? window.RVS.createBridgePlayer()
+  : window.RVS.createDirectPlayer({ getVideo: getBoundVideo });
+
+// ----------------------------------------------------------------------------
+// "Now Watching" — share the current video's title + URL with the peer so each
+// user can see (and open) what the other is browsing. Assigned to the
+// outer-scope shareMediaInfo (a function expression, not hoisted) before the
+// READ path below, since findAndBindVideo() can call it synchronously the
+// moment main() runs if the <video> element is already present.
+// ----------------------------------------------------------------------------
+
+// Best-effort local media, or null when not on a watch page. Falls back to the URL.
+function getLocalMedia() {
+  if (!site.isWatchPage()) return null;
+  const url = location.href;
+  const title = site.getTitle();
+  return { title: title || url, url };
+}
+
+// Broadcast the local video to the peer. Guarded so we only emit when paired;
+// the background also drops media_info unless two peers are present. Pass
+// force=true to re-send even if nothing changed (e.g. just after pairing).
+shareMediaInfo = function (force) {
+  if (connectionStatus !== 'Connected' || peersCount !== 2) return;
+  const media = getLocalMedia();
+  if (!media) return;
+  // De-dupe on title *and* url, not url alone: on a Netflix episode change the new
+  // title isn't in the DOM yet when we first fire (getTitle() falls back to
+  // "Netflix"), so keying on url alone would latch that stale title until the next
+  // navigation. With the title in the key, the periodic re-share below corrects it
+  // once the real title settles (same url, changed title).
+  const key = media.url + '\n' + media.title;
+  if (!force && key === lastSharedKey) return;
+  lastSharedKey = key;
+  port.postMessage({ action: 'media_info', title: media.title, url: media.url });
+};
+
+// Periodically re-share the local video so the peer follows navigation to a new
+// title (covers SPA route changes that reuse the same <video>, and titles that
+// settle a beat after the URL). Self-guards on connection state, and only emits
+// when the title/url actually changed.
+setInterval(() => shareMediaInfo(false), 4000);
+
+// ----------------------------------------------------------------------------
+// READ path — discover the <video> and capture local user actions.
+// The SPA injects/replaces the element ~1-2s after load, so we observe the DOM.
+// On Netflix this path is still active (reads are unchanged); only writes go
+// through the bridge. The <video> here is effectively read-only on Netflix.
 // ----------------------------------------------------------------------------
 findAndBindVideo();
 
@@ -194,75 +298,11 @@ function getBoundVideo() {
   return videoElement || document.querySelector('video');
 }
 
-// ----------------------------------------------------------------------------
-// 6. "Now Watching" — share the current video's title + URL with the peer so each
-//    user can see (and open) what the other is browsing.
-// ----------------------------------------------------------------------------
-
-// Best-effort local media, or null when not on a watch page. Falls back to the URL.
-function getLocalMedia() {
-  if (!site.isWatchPage()) return null;
-  const url = location.href;
-  const title = site.getTitle();
-  return { title: title || url, url };
 }
-
-// Canonical video identity, so timestamps / playlist / query noise don't count
-// as a "different" video. Returns e.g. "yt:VIDEOID" or "nf:NUMERICID", or null.
-function getVideoId(url) {
-  try {
-    const u = new URL(url);
-    const host = u.hostname.toLowerCase();
-    if (host.includes('netflix.com')) {
-      const m = u.pathname.match(/\/watch\/(\d+)/);
-      return m ? `nf:${m[1]}` : null;
-    }
-    if (host === 'youtu.be') return `yt:${u.pathname.slice(1)}`;
-    if (u.pathname.startsWith('/shorts/')) return `yt:${u.pathname.split('/')[2] || ''}`;
-    const v = u.searchParams.get('v');
-    return v ? `yt:${v}` : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-// True only when we can confirm the peer is on a *different* video. Unknown
-// (no peer media yet, or an unparseable URL) returns false, so sync isn't blocked
-// during the brief post-pairing handshake or on unrecognized URLs.
-function isDifferentVideoFromPeer() {
-  if (!peerMedia || !peerMedia.url) return false;
-  const local = getVideoId(location.href);
-  const peer = getVideoId(peerMedia.url);
-  if (!local || !peer) return false;
-  return local !== peer;
-}
-
-// Broadcast the local video to the peer. Guarded so we only emit when paired;
-// the background also drops media_info unless two peers are present. Pass
-// force=true to re-send even if nothing changed (e.g. just after pairing).
-function shareMediaInfo(force) {
-  if (connectionStatus !== 'Connected' || peersCount !== 2) return;
-  const media = getLocalMedia();
-  if (!media) return;
-  // De-dupe on title *and* url, not url alone: on a Netflix episode change the new
-  // title isn't in the DOM yet when we first fire (getTitle() falls back to
-  // "Netflix"), so keying on url alone would latch that stale title until the next
-  // navigation. With the title in the key, the periodic re-share below corrects it
-  // once the real title settles (same url, changed title).
-  const key = media.url + '\n' + media.title;
-  if (!force && key === lastSharedKey) return;
-  lastSharedKey = key;
-  port.postMessage({ action: 'media_info', title: media.title, url: media.url });
-}
-
-// Periodically re-share the local video so the peer follows navigation to a new
-// title (covers SPA route changes that reuse the same <video>, and titles that
-// settle a beat after the URL). Self-guards on connection state, and only emits
-// when the title/url actually changed.
-setInterval(() => shareMediaInfo(false), 4000);
 
 // ----------------------------------------------------------------------------
-// 7. Popup messages (CONNECT / DISCONNECT / GET_STATUS).
+// 6. Popup messages (CONNECT / DISCONNECT / GET_STATUS) — always registered, so
+//    a room can be joined/left/queried from any tab, not just YouTube/Netflix.
 // ----------------------------------------------------------------------------
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'CONNECT') {
@@ -305,7 +345,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // ----------------------------------------------------------------------------
-// 8. Sync commands and state updates from background.
+// 7. Sync commands and state updates from background — always registered so
+//    status/peer count/latency stay accurate from any tab; only the final
+//    dispatch to the player is skipped when there's no video integration
+//    (off YouTube/Netflix, player stays null).
 // ----------------------------------------------------------------------------
 port.onMessage.addListener((msg) => {
   const { action } = msg;
@@ -314,8 +357,8 @@ port.onMessage.addListener((msg) => {
     peersCount = msg.peersCount;
     if (msg.status === 'connected') {
       connectionStatus = 'Connected';
-      // Newly paired: tell the peer what we're watching right now.
-      if (peersCount === 2) shareMediaInfo(true);
+      // Newly paired: tell the peer what we're watching right now (no-op off-site).
+      if (peersCount === 2 && shareMediaInfo) shareMediaInfo(true);
     } else if (msg.status === 'peer_disconnected') {
       peersCount = 1;
       peerMedia = null;
@@ -353,6 +396,9 @@ port.onMessage.addListener((msg) => {
     }
     return;
   }
+
+  // No video integration off YouTube/Netflix — nothing to apply the command to.
+  if (!player) return;
 
   // Ignore remote playback commands while the peer is on a different video.
   // peerMedia is kept current by the media_info handler above.
