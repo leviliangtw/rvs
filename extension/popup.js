@@ -16,6 +16,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Tracks the latest known connection status so the button can toggle behavior.
   let currentStatus = 'Disconnected';
 
+  // True when the Room ID field holds a locally-generated placeholder (from
+  // updateUIForUnsupportedPage) rather than a real value from the content
+  // script or the user. A transient content-script hiccup right after a real
+  // navigation (e.g. clicking the peer's "Now Watching" link) can trigger
+  // "Unsupported Page" for a single poll tick before the fresh content script
+  // finishes loading; without this flag, that placeholder would permanently
+  // block the real Room ID from ever appearing (see the watchStatus guard
+  // below), since the field would no longer be empty.
+  let isRoomIdPlaceholder = false;
+
   // Transport to the active tab's content script — see popup-channel.js. Hides
   // chrome.tabs.query/sendMessage and the lastError-means-unsupported-page check.
   const channel = window.RVS.createPopupChannel();
@@ -52,7 +62,14 @@ document.addEventListener('DOMContentLoaded', () => {
   genBtn.addEventListener('click', () => {
     const roomId = generateRoomId();
     roomIdInput.value = roomId;
+    isRoomIdPlaceholder = false;
     copyRoomId(roomId);
+  });
+
+  // Manual edits are never a placeholder — stop treating the field as one the
+  // moment the user types over it.
+  roomIdInput.addEventListener('input', () => {
+    isRoomIdPlaceholder = false;
   });
 
   // Copy Room ID
@@ -71,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const text = await navigator.clipboard.readText();
       if (text) {
         roomIdInput.value = text.trim().toUpperCase();
+        isRoomIdPlaceholder = false;
       }
     } catch (err) {
       console.warn('Clipboard read restricted:', err);
@@ -131,10 +149,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Prefill the field with this tab's room (active room, or the stable
-    // per-tab suggestion the content script persists). Only when empty, so
-    // the 1s poll never overwrites what the user is typing.
-    if (!roomIdInput.value && response.roomId) {
+    // per-tab suggestion the content script persists). Only when empty or
+    // still holding a placeholder, so the 1s poll never overwrites what the
+    // user is typing — but a genuine roomId can still replace a placeholder
+    // left by a transient "Unsupported Page" tick.
+    if ((!roomIdInput.value || isRoomIdPlaceholder) && response.roomId) {
       roomIdInput.value = response.roomId;
+      isRoomIdPlaceholder = false;
     }
 
     // Update connection status
@@ -214,7 +235,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Unsupported pages have no content script to provide/persist an ID, so seed
     // one locally when the field is empty — the field is ready to share from any
     // tab. (Without a content script this can't persist across popup opens.)
-    if (!roomIdInput.value) roomIdInput.value = generateRoomId();
+    // Marked as a placeholder so a genuine roomId (e.g. once a fresh content
+    // script finishes loading after a real navigation) can still replace it.
+    if (!roomIdInput.value) {
+      roomIdInput.value = generateRoomId();
+      isRoomIdPlaceholder = true;
+    }
 
     currentStatus = 'Disconnected';
     statusValue.textContent = 'Unsupported Page';
