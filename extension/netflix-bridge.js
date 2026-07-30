@@ -12,6 +12,15 @@
 (() => {
   'use strict';
 
+  // Injected on <all_urls> (see manifest — no host_permissions, so corporate
+  // sandbox/DLP policies blocking an explicit netflix.com host grant don't stop
+  // the bridge from loading at all); this hostname check is what actually
+  // confines it to Netflix, so it must not be a loose substring match — that
+  // would also fire on e.g. "netflix.com.evil.example".
+  const hostname = window.location.hostname;
+  const isNetflix = hostname === 'netflix.com' || hostname.endsWith('.netflix.com');
+  if (!isNetflix) return;
+
   // Resolve the active watch-session player object, or null if not ready.
   function getPlayer() {
     try {

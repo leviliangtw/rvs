@@ -23,9 +23,18 @@ interface RvsPlayer {
   onVideoReady(): void;
 }
 
+// popup-channel.js (popup realm) and players.js (content-script realm) each
+// populate window.RVS with only their own factory — the two never coexist in
+// the same JS realm, so every member here is optional.
+interface RvsPopupChannel {
+  send(message: object, callback: (response: any) => void): void;
+  watchStatus(callback: (response: any) => void): () => void;
+}
+
 interface RvsNamespace {
-  createDirectPlayer(deps: { getVideo: () => HTMLVideoElement | null }): RvsPlayer;
-  createBridgePlayer(): RvsPlayer;
+  createDirectPlayer?(deps: { getVideo: () => HTMLVideoElement | null }): RvsPlayer;
+  createBridgePlayer?(): RvsPlayer;
+  createPopupChannel?(): RvsPopupChannel;
 }
 
 interface Window {

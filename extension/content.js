@@ -1,4 +1,20 @@
-const isNetflix = window.location.hostname.includes('netflix.com');
+// Injected on <all_urls> (see manifest — no host_permissions, so the corporate
+// sandbox/DLP policies that block explicit youtube.com/netflix.com host grants
+// don't stop the script from loading at all); this hostname check is what
+// actually confines it to YouTube/Netflix, so it must not be a loose substring
+// match — that would also fire on e.g. "netflix.com.evil.example".
+function isHost(hostname, domain) {
+  return hostname === domain || hostname.endsWith('.' + domain);
+}
+const hostname = window.location.hostname;
+const isNetflix = isHost(hostname, 'netflix.com');
+const isYouTube = isHost(hostname, 'youtube.com') || hostname === 'youtu.be';
+
+if (isYouTube || isNetflix) {
+  main();
+}
+
+function main() {
 
 // ----------------------------------------------------------------------------
 // 1. Site adapter — the only YouTube/Netflix difference on the READ/metadata side.
@@ -362,3 +378,5 @@ port.onMessage.addListener((msg) => {
   // on the direct path if the <video> isn't ready yet).
   player.apply(msg);
 });
+
+}

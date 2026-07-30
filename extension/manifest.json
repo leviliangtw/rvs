@@ -1,15 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Remote Video Synchronizer (RVS)",
-  "version": "1.4.0",
+  "version": "1.4.1",
+  "version_name": "1.4.1 (beta)",
   "description": "Synchronizes video playback, speed, and seeking on YouTube and Netflix between remote users.",
   "permissions": [
     "activeTab",
     "clipboardRead"
-  ],
-  "host_permissions": [
-    "*://*.youtube.com/*",
-    "*://*.netflix.com/*"
   ],
   "action": {
     "default_popup": "popup.html"
@@ -20,8 +17,7 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.youtube.com/*",
-        "*://*.netflix.com/*"
+        "<all_urls>"
       ],
       "js": [
         "players.js",
@@ -31,7 +27,7 @@
     },
     {
       "matches": [
-        "*://*.netflix.com/*"
+        "<all_urls>"
       ],
       "js": [
         "netflix-bridge.js"

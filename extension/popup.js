@@ -11,10 +11,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Show the extension version (read from the manifest, so it never drifts).
   const versionEl = document.getElementById('version');
-  if (versionEl) versionEl.textContent = 'v' + chrome.runtime.getManifest().version;
+  if (versionEl) {
+    const manifest = chrome.runtime.getManifest();
+    versionEl.textContent = 'v' + (manifest.version_name || manifest.version);
+  }
 
   // Tracks the latest known connection status so the button can toggle behavior.
   let currentStatus = 'Disconnected';
+
+  // Transport to the active tab's content script — see popup-channel.js. Hides
+  // chrome.tabs.query/sendMessage and the lastError-means-unsupported-page check.
+  const channel = window.RVS.createPopupChannel();
 
   // The Room ID is per-tab: it's prefilled from the active tab's own state
   // (reported by its content script), never from global storage. A fresh tab
@@ -78,8 +85,8 @@ document.addEventListener('DOMContentLoaded', () => {
   connectBtn.addEventListener('click', () => {
     // If already connected/connecting, this button disconnects instead.
     if (currentStatus === 'Connected' || currentStatus === 'Connecting') {
-      sendMessageToActiveTab({ action: 'DISCONNECT' }, () => {
-        if (chrome.runtime.lastError) {
+      channel.send({ action: 'DISCONNECT' }, (response) => {
+        if (!response) {
           updateUIForUnsupportedPage();
           return;
         }
@@ -100,13 +107,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Send connection command to the active tab's content script
     // (content.js persists the room per-tab in sessionStorage)
-    sendMessageToActiveTab({ action: 'CONNECT', roomId: roomId }, (response) => {
-      if (chrome.runtime.lastError) {
+    channel.send({ action: 'CONNECT', roomId: roomId }, (response) => {
+      if (!response) {
         updateUIForUnsupportedPage();
         return;
       }
 
-      if (response && response.success) {
+      if (response.success) {
         currentStatus = 'Connecting';
         statusValue.textContent = 'Connecting...';
         statusValue.className = 'status-value status-connecting';
@@ -118,54 +125,46 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Periodically poll content script for connection status updates.
-  // No handle kept: the interval lives for the popup's lifetime and is torn
-  // down automatically when the popup document closes.
-  setInterval(updateStatus, 1000);
-  updateStatus(); // Immediate initial check
+  // Watch content script connection status. The channel polls internally (see
+  // popup-channel.js) and tears the poll down when the popup document closes.
+  channel.watchStatus((response) => {
+    if (!response) {
+      updateUIForUnsupportedPage();
+      return;
+    }
 
-  function updateStatus() {
-    sendMessageToActiveTab({ action: 'GET_STATUS' }, (response) => {
-      if (chrome.runtime.lastError) {
-        updateUIForUnsupportedPage();
-        return;
-      }
+    // Prefill the field with this tab's room (active room, or the stable
+    // per-tab suggestion the content script persists). Only when empty, so
+    // the 1s poll never overwrites what the user is typing.
+    if (!roomIdInput.value && response.roomId) {
+      roomIdInput.value = response.roomId;
+    }
 
-      if (response) {
-        // Prefill the field with this tab's room (active room, or the stable
-        // per-tab suggestion the content script persists). Only when empty, so
-        // the 1s poll never overwrites what the user is typing.
-        if (!roomIdInput.value && response.roomId) {
-          roomIdInput.value = response.roomId;
-        }
+    // Update connection status
+    currentStatus = response.status;
+    statusValue.textContent = response.status;
+    if (response.status === 'Connected') {
+      statusValue.className = 'status-value status-connected';
+    } else if (response.status === 'Connecting') {
+      statusValue.className = 'status-value status-connecting';
+    } else {
+      statusValue.className = 'status-value status-disconnected';
+    }
+    setConnectBtnLabel(response.status);
 
-        // Update connection status
-        currentStatus = response.status;
-        statusValue.textContent = response.status;
-        if (response.status === 'Connected') {
-          statusValue.className = 'status-value status-connected';
-        } else if (response.status === 'Connecting') {
-          statusValue.className = 'status-value status-connecting';
-        } else {
-          statusValue.className = 'status-value status-disconnected';
-        }
-        setConnectBtnLabel(response.status);
+    // Update peer counts
+    peersValue.textContent = `${response.peersCount} / 2`;
 
-        // Update peer counts
-        peersValue.textContent = `${response.peersCount} / 2`;
+    // Update latency readings
+    if (response.latency !== null && response.latency !== undefined) {
+      latencyValue.textContent = `${Math.round(response.latency)} ms`;
+    } else {
+      latencyValue.textContent = '-- ms';
+    }
 
-        // Update latency readings
-        if (response.latency !== null && response.latency !== undefined) {
-          latencyValue.textContent = `${Math.round(response.latency)} ms`;
-        } else {
-          latencyValue.textContent = '-- ms';
-        }
-
-        // Update the peer's "Now Watching" link
-        renderMedia(peerMediaEl, response.peerMedia);
-      }
-    });
-  }
+    // Update the peer's "Now Watching" link
+    renderMedia(peerMediaEl, response.peerMedia);
+  });
 
   // Only http(s) URLs on YouTube/Netflix become clickable links. The peer's URL
   // is untrusted, so this blocks javascript:/data: and other schemes that would
@@ -233,20 +232,5 @@ document.addEventListener('DOMContentLoaded', () => {
   function setConnectBtnLabel(status) {
     connectBtn.textContent =
       (status === 'Connected' || status === 'Connecting') ? 'Disconnect' : 'Connect';
-  }
-
-  // Helper to send message to the content script of the active tab
-  function sendMessageToActiveTab(message, callback) {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs || tabs.length === 0) {
-        if (callback) callback(null);
-        return;
-      }
-
-      const activeTabId = tabs[0].id;
-      chrome.tabs.sendMessage(activeTabId, message, (response) => {
-        if (callback) callback(response);
-      });
-    });
   }
 });
