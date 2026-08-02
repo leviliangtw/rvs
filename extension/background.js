@@ -1,6 +1,9 @@
-importScripts('config.js');
+importScripts('config.js', 'tab-session.js');
 
-// tabId → { port, socket, roomId, status, peersCount, oneWayLatency, pingInterval }
+// tabId → TabSession (see tab-session.js). background.js only ever calls
+// into a session's public interface (rebind/disconnect/handlePortMessage/
+// getStatus) — it never touches a session's WebSocket, port, or room state
+// directly.
 const tabStates = new Map();
 
 // Content scripts connect here; the open port keeps the service worker alive.
@@ -8,163 +11,23 @@ chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'rvs-sync') return;
 
   const tabId = port.sender.tab.id;
-  const state = {
-    port,
-    socket: null,
-    roomId: null,
-    status: 'Disconnected',
-    peersCount: 0,
-    oneWayLatency: 0,
-    pingInterval: null,
-  };
-  tabStates.set(tabId, state);
 
-  port.onMessage.addListener((msg) => handlePortMessage(tabId, state, msg));
+  let session = tabStates.get(tabId);
+  if (!session) {
+    session = createTabSession(tabId, { updateIcon });
+    tabStates.set(tabId, session);
+  }
+
+  session.rebind(port);
+
+  port.onMessage.addListener((msg) => session.handlePortMessage(msg));
   port.onDisconnect.addListener(() => {
-    cleanupSocket(tabId, state);
-    tabStates.delete(tabId);
+    const lastErrorMessage = chrome.runtime.lastError && chrome.runtime.lastError.message;
+    if (session.disconnect(port, lastErrorMessage)) {
+      tabStates.delete(tabId);
+    }
   });
 });
-
-function handlePortMessage(tabId, state, msg) {
-  if (msg.action === 'CONNECT') {
-    openWebSocket(tabId, state, msg.roomId);
-    return;
-  }
-
-  if (msg.action === 'DISCONNECT') {
-    cleanupSocket(tabId, state);
-    return;
-  }
-
-  // Forward video events (play/pause/seek/rate) to server
-  if (state.socket && state.socket.readyState === WebSocket.OPEN && state.peersCount === 2) {
-    state.socket.send(JSON.stringify(msg));
-  }
-}
-
-function openWebSocket(tabId, state, roomId) {
-  if (state.socket) {
-    // Detach handlers before closing so the old socket's async onclose/onerror
-    // can't fire cleanupSocket() and tear down the new socket we're about to open.
-    const old = state.socket;
-    old.onopen = old.onmessage = old.onclose = old.onerror = null;
-    old.close();
-  }
-
-  state.roomId = roomId;
-  state.status = 'Connecting';
-  updateIcon(tabId, 'Connecting');
-
-  const socket = new WebSocket(WS_SERVER_URL);
-  state.socket = socket;
-
-  socket.onopen = () => {
-    socket.send(JSON.stringify({ action: 'join', room: roomId }));
-  };
-
-  socket.onmessage = (event) => handleServerMessage(tabId, state, event.data);
-
-  socket.onclose = () => cleanupSocket(tabId, state);
-
-  socket.onerror = () => {
-    // Connection-level failure (server down / unreachable). Mark silent so the
-    // content script drops cleanly to Disconnected instead of alerting.
-    send(state, { action: 'error', message: 'Signaling server unavailable', silent: true });
-    cleanupSocket(tabId, state);
-  };
-}
-
-function handleServerMessage(tabId, state, rawMessage) {
-  try {
-    const data = JSON.parse(rawMessage);
-    const { action } = data;
-
-    if (action === 'error') {
-      send(state, data);
-      cleanupSocket(tabId, state);
-      return;
-    }
-
-    if (action === 'state') {
-      state.peersCount = data.peersCount || 0;
-
-      if (data.status === 'connected') {
-        state.status = 'Connected';
-        updateIcon(tabId, 'Connected');
-        if (state.peersCount === 2) startLatencyPings(tabId, state);
-      } else if (data.status === 'peer_disconnected') {
-        state.peersCount = 1;
-        stopLatencyPings(state);
-      }
-
-      send(state, data);
-      return;
-    }
-
-    if (action === 'p2p_ping') {
-      if (state.socket && state.socket.readyState === WebSocket.OPEN) {
-        state.socket.send(JSON.stringify({ action: 'p2p_pong', timestamp: data.timestamp }));
-      }
-      return;
-    }
-
-    if (action === 'p2p_pong') {
-      const rtt = Date.now() - data.timestamp;
-      state.oneWayLatency = rtt / 2;
-      send(state, { action: 'latency_update', latency: state.oneWayLatency });
-      return;
-    }
-
-    // Forward sync commands (play/pause/seek/rate) to the content script.
-    // Stamp latency compensation here (where latency is measured) so the content
-    // script applies times verbatim. One-way latency ≈ RTT/2; play/seek aim at a
-    // slightly later position so playback aligns despite transmission delay.
-    if ((action === 'play' || action === 'seek') && typeof data.time === 'number') {
-      data.time += state.oneWayLatency / 1000;
-    }
-    send(state, data);
-
-  } catch (err) {
-    console.error('[RVS] Error handling server message:', err);
-  }
-}
-
-function startLatencyPings(tabId, state) {
-  stopLatencyPings(state);
-  state.pingInterval = setInterval(() => {
-    if (state.socket && state.socket.readyState === WebSocket.OPEN && state.peersCount === 2) {
-      state.socket.send(JSON.stringify({ action: 'p2p_ping', timestamp: Date.now() }));
-    }
-  }, 5000);
-}
-
-function stopLatencyPings(state) {
-  if (state.pingInterval) {
-    clearInterval(state.pingInterval);
-    state.pingInterval = null;
-  }
-  state.oneWayLatency = 0;
-}
-
-function cleanupSocket(tabId, state) {
-  stopLatencyPings(state);
-  if (state.socket) {
-    state.socket.close();
-    state.socket = null;
-  }
-  state.status = 'Disconnected';
-  state.peersCount = 0;
-  state.roomId = null;
-  updateIcon(tabId, 'Disconnected');
-}
-
-// Safe postMessage — port may already be disconnected
-function send(state, msg) {
-  try {
-    state.port.postMessage(msg);
-  } catch (_) {}
-}
 
 // Repaint the icon to match this tab's real connection state when it navigates
 // or reloads. A SPA soft navigation (e.g. YouTube video -> home and back) fires
@@ -174,8 +37,8 @@ function send(state, msg) {
 // Disconnected until the session resumes.
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === 'loading') {
-    const state = tabStates.get(tabId);
-    updateIcon(tabId, state ? state.status : 'Disconnected');
+    const session = tabStates.get(tabId);
+    updateIcon(tabId, session ? session.getStatus() : 'Disconnected');
   }
 });
 

@@ -39,11 +39,23 @@ export default [
     },
   },
 
-  // Service worker: importScripts globals + WS_SERVER_URL from config.js
+  // Service worker: background.js and tab-session.js share one scope via
+  // importScripts (background.js loads config.js and tab-session.js).
+  {
+    files: ['extension/background.js', 'extension/tab-session.js'],
+    languageOptions: {
+      globals: { ...globals.serviceworker, WS_SERVER_URL: 'readonly' },
+    },
+  },
+  // background.js additionally sees createTabSession as a cross-file global
+  // (declared in its own block so ESLint doesn't treat tab-session.js's own
+  // definition as redeclaring a "global"). tab-session.js needs no such
+  // entry for updateIcon — background.js passes it in explicitly as a
+  // parameter now, not a bare global.
   {
     files: ['extension/background.js'],
     languageOptions: {
-      globals: { ...globals.serviceworker, WS_SERVER_URL: 'readonly' },
+      globals: { createTabSession: 'readonly' },
     },
   },
 ]
