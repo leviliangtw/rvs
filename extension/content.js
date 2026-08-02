@@ -1,8 +1,8 @@
 // Injected on <all_urls> (see manifest — no host_permissions, so the corporate
 // sandbox/DLP policies that block explicit youtube.com/netflix.com host grants
 // don't stop the script from loading at all). CONNECT/DISCONNECT/GET_STATUS
-// (sections 7-8 below) work on any page, so a room can be joined and its status
-// queried before ever navigating to YouTube/Netflix. The hostname check only
+// work on any page, so a room can be joined and its status queried before ever
+// navigating to YouTube/Netflix. The hostname check only
 // gates the video-specific integration (site adapter, player, DOM observer) in
 // main() — it must not be a loose substring match, since that would also fire
 // on e.g. "netflix.com.evil.example".
@@ -29,8 +29,8 @@ let lastSharedKey = null;
 
 // The write-path player adapter (players.js) and the media-sharing broadcaster
 // are only created on YouTube/Netflix (see main() below) — left null/unset
-// elsewhere so sections 7-8 can skip video-specific work off-site instead of
-// erroring.
+// elsewhere so the message handlers below can skip video-specific work
+// off-site instead of erroring.
 let player = null;
 let shareMediaInfo = null;
 
@@ -85,6 +85,75 @@ const port = chrome.runtime.connect({ name: 'rvs-sync' });
 
 console.log('[RVS] Content script injected.');
 
+// Registered immediately, before any of the (possibly slow) DOM/observer setup
+// in main() below, so a status sync background sends the instant this port
+// connects (see background.js's onConnect rebind path) is never missed.
+port.onMessage.addListener((msg) => {
+  const { action } = msg;
+  if (action === 'state' || action === 'error') {
+    console.log(`[RVS] port message: ${JSON.stringify(msg)}`);
+  }
+
+  if (action === 'state') {
+    peersCount = msg.peersCount;
+    if (msg.status === 'connected') {
+      connectionStatus = 'Connected';
+      // background is the authoritative room tracker (keyed by tab, not
+      // origin) — persist its roomId here too, so this origin's sessionStorage
+      // is correct even after a cross-origin navigation started it out empty.
+      if (msg.roomId) setActiveRoom(msg.roomId);
+      // Newly paired: tell the peer what we're watching right now (no-op off-site).
+      if (peersCount === 2 && shareMediaInfo) shareMediaInfo(true);
+    } else if (msg.status === 'peer_disconnected') {
+      peersCount = 1;
+      peerMedia = null;
+      // TODO: more robust handling of mid-session disconnects (e.g. pause and alert, or even remove the peer count limit and just alert?)
+      // alert('Remote user has disconnected.');
+    }
+    return;
+  }
+
+  if (action === 'latency_update') {
+    oneWayLatency = msg.latency;
+    return;
+  }
+
+  if (action === 'media_info') {
+    // The peer's current video. Stored for the popup to render; the URL is
+    // validated there before it's turned into a clickable link.
+    peerMedia = msg.url ? { title: msg.title || msg.url, url: msg.url } : null;
+    return;
+  }
+
+  if (action === 'error') {
+    connectionStatus = 'Disconnected';
+    peersCount = 0;
+    oneWayLatency = 0;
+    peerMedia = null;
+    // Connection-level failures (e.g. server unavailable) disconnect silently and
+    // keep the session so a later reload can retry; actionable server errors (room
+    // full, invalid room) surface to the user and stop auto-rejoin.
+    if (msg.silent) {
+      console.warn(`[RVS] ${msg.message}`);
+    } else {
+      clearActiveRoom();
+      alert(`[Sync Error] ${msg.message}`);
+    }
+    return;
+  }
+
+  // No video integration off YouTube/Netflix — nothing to apply the command to.
+  if (!player) return;
+
+  // Ignore remote playback commands while the peer is on a different video.
+  // peerMedia is kept current by the media_info handler above.
+  if (isDifferentVideoFromPeer()) return;
+
+  // Sync command — the active player applies it (and parks/retries internally
+  // on the direct path if the <video> isn't ready yet).
+  player.apply(msg);
+});
+
 // Resume an active session after a navigation/reload within this tab (e.g. after
 // clicking the peer's link to "join" their video).
 const resumeRoom = getActiveRoom();
@@ -96,7 +165,7 @@ if (resumeRoom) {
 // ----------------------------------------------------------------------------
 // 4. Canonical video identity + "different video" check. Only touches
 //    peerMedia/location.href (not the site adapter or player), so it's safe to
-//    keep unconditional; section 8 uses it to gate sync-command dispatch.
+//    keep unconditional; used below to gate sync-command dispatch.
 // ----------------------------------------------------------------------------
 function getVideoId(url) {
   try {
@@ -130,7 +199,7 @@ function isDifferentVideoFromPeer() {
 // 5. Video/player integration — YouTube/Netflix only. Everything that touches
 //    the <video> element, the write-path player, or site-specific metadata is
 //    scoped here; connecting to a room and answering GET_STATUS work regardless
-//    of hostname (sections 6-7 below).
+//    of hostname (see above and the popup message handler below).
 // ----------------------------------------------------------------------------
 if (isYouTube || isNetflix) {
   main();
@@ -342,69 +411,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       roomId: getActiveRoom() || getPrefilledRoom(),
     });
   }
-});
-
-// ----------------------------------------------------------------------------
-// 7. Sync commands and state updates from background — always registered so
-//    status/peer count/latency stay accurate from any tab; only the final
-//    dispatch to the player is skipped when there's no video integration
-//    (off YouTube/Netflix, player stays null).
-// ----------------------------------------------------------------------------
-port.onMessage.addListener((msg) => {
-  const { action } = msg;
-
-  if (action === 'state') {
-    peersCount = msg.peersCount;
-    if (msg.status === 'connected') {
-      connectionStatus = 'Connected';
-      // Newly paired: tell the peer what we're watching right now (no-op off-site).
-      if (peersCount === 2 && shareMediaInfo) shareMediaInfo(true);
-    } else if (msg.status === 'peer_disconnected') {
-      peersCount = 1;
-      peerMedia = null;
-      // TODO: more robust handling of mid-session disconnects (e.g. pause and alert, or even remove the peer count limit and just alert?)
-      // alert('Remote user has disconnected.');
-    }
-    return;
-  }
-
-  if (action === 'latency_update') {
-    oneWayLatency = msg.latency;
-    return;
-  }
-
-  if (action === 'media_info') {
-    // The peer's current video. Stored for the popup to render; the URL is
-    // validated there before it's turned into a clickable link.
-    peerMedia = msg.url ? { title: msg.title || msg.url, url: msg.url } : null;
-    return;
-  }
-
-  if (action === 'error') {
-    connectionStatus = 'Disconnected';
-    peersCount = 0;
-    oneWayLatency = 0;
-    peerMedia = null;
-    // Connection-level failures (e.g. server unavailable) disconnect silently and
-    // keep the session so a later reload can retry; actionable server errors (room
-    // full, invalid room) surface to the user and stop auto-rejoin.
-    if (msg.silent) {
-      console.warn(`[RVS] ${msg.message}`);
-    } else {
-      clearActiveRoom();
-      alert(`[Sync Error] ${msg.message}`);
-    }
-    return;
-  }
-
-  // No video integration off YouTube/Netflix — nothing to apply the command to.
-  if (!player) return;
-
-  // Ignore remote playback commands while the peer is on a different video.
-  // peerMedia is kept current by the media_info handler above.
-  if (isDifferentVideoFromPeer()) return;
-
-  // Sync command — the active player applies it (and parks/retries internally
-  // on the direct path if the <video> isn't ready yet).
-  player.apply(msg);
 });
