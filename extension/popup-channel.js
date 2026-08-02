@@ -16,14 +16,14 @@
     // Send one message to the active tab's content script. Normalizes "no active
     // tab" and "no content script there" (chrome.runtime.lastError) to a single
     // callback(null), so callers never touch chrome.tabs or lastError themselves.
-    function send(message, callback) {
+    function send(msg, callback) {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (!tabs || tabs.length === 0 || tabs[0].id == null) {
           callback(null);
           return;
         }
 
-        chrome.tabs.sendMessage(tabs[0].id, message, (response) => {
+        chrome.tabs.sendMessage(tabs[0].id, msg, (response) => {
           if (chrome.runtime.lastError) {
             void chrome.runtime.lastError; // clear "unchecked lastError" warning
             callback(null);

@@ -39,18 +39,44 @@ interface RvsPlayer {
   onVideoReady(): void;
 }
 
-// popup-channel.js (popup realm) and players.js (content-script realm) each
-// populate window.RVS with only their own factory — the two never coexist in
-// the same JS realm, so every member here is optional.
+// popup-channel.js populates window.RVS in the popup realm; players.js and
+// connection-state.js both populate it in the content-script realm (loaded
+// in that order, each merging into window.RVS rather than overwriting it —
+// see connection-state.js). The popup realm never coexists with the
+// content-script realm, but players.js and connection-state.js do, hence
+// every member here being optional rather than assuming exactly one factory
+// is ever present.
 interface RvsPopupChannel {
-  send(message: object, callback: (response: any) => void): void;
+  send(msg: object, callback: (response: any) => void): void;
   watchStatus(callback: (response: any) => void): () => void;
+}
+
+interface RvsConnectionSnapshot {
+  status: string;
+  peersCount: number;
+  latency: number | null;
+  peerMediaInfo: { title: string; url: string } | null;
+}
+
+interface RvsConnectionState {
+  connect(): void;
+  disconnect(): void;
+  handleState(update: {
+    status: string;
+    peersCount: number;
+    roomId?: string;
+  }): { confirmedRoomId: string | null; isJustPaired: boolean };
+  handleLatencyUpdate(latency: number): void;
+  handleMediaInfo(update: { title?: string; url?: string }): void;
+  handleError(): void;
+  getSnapshot(): RvsConnectionSnapshot;
 }
 
 interface RvsNamespace {
   createDirectPlayer?(deps: { getVideo: () => HTMLVideoElement | null }): RvsPlayer;
   createBridgePlayer?(): RvsPlayer;
   createPopupChannel?(): RvsPopupChannel;
+  createConnectionState?(): RvsConnectionState;
 }
 
 interface Window {

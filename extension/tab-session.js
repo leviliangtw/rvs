@@ -12,8 +12,8 @@
 // against fixed fixture strings) rather than an inline regex buried inside
 // createTabSession()'s disconnect(). If Chrome ever changes this wording,
 // this is the one place that needs updating.
-function isBfcacheDisconnectReason(message) {
-  return /back\/forward cache/.test(message || '');
+function isBfcacheDisconnectReason(reason) {
+  return /back\/forward cache/.test(reason || '');
 }
 
 // Creates the session for one tabId. `updateIcon` is injected (matching
@@ -81,24 +81,24 @@ function createTabSession(tabId, { updateIcon }) {
 
   function handleServerMessage(rawMessage) {
     try {
-      const data = JSON.parse(rawMessage);
-      const { action } = data;
+      const msg = JSON.parse(rawMessage);
+      const { action } = msg;
 
       if (action === 'error') {
-        console.log(`[RVS] tab=${tabId} server error: ${data.message}`);
-        sendToPort(data);
+        console.log(`[RVS] tab=${tabId} server error: ${msg.message}`);
+        sendToPort(msg);
         cleanupSocket();
         return;
       }
 
       if (action === 'state') {
-        peersCount = data.peersCount || 0;
+        peersCount = msg.peersCount || 0;
 
-        if (data.status === 'connected') {
+        if (msg.status === 'connected') {
           status = 'Connected';
           updateIcon(tabId, 'Connected');
           if (peersCount === 2) startLatencyPings();
-        } else if (data.status === 'peer_disconnected') {
+        } else if (msg.status === 'peer_disconnected') {
           peersCount = 1;
           stopLatencyPings();
         }
@@ -106,19 +106,19 @@ function createTabSession(tabId, { updateIcon }) {
         // Enrich with the roomId this session tracks — the server's own
         // 'state' message doesn't include it, and content.js persists it as
         // the origin-independent source of truth for this tab's active room.
-        sendToPort({ ...data, roomId });
+        sendToPort({ ...msg, roomId });
         return;
       }
 
       if (action === 'p2p_ping') {
         if (socket && socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ action: 'p2p_pong', timestamp: data.timestamp }));
+          socket.send(JSON.stringify({ action: 'p2p_pong', timestamp: msg.timestamp }));
         }
         return;
       }
 
       if (action === 'p2p_pong') {
-        const rtt = Date.now() - data.timestamp;
+        const rtt = Date.now() - msg.timestamp;
         oneWayLatency = rtt / 2;
         sendToPort({ action: 'latency_update', latency: oneWayLatency });
         return;
@@ -129,10 +129,10 @@ function createTabSession(tabId, { updateIcon }) {
       // content script applies times verbatim. One-way latency ≈ RTT/2;
       // play/seek aim at a slightly later position so playback aligns
       // despite transmission delay.
-      if ((action === 'play' || action === 'seek') && typeof data.time === 'number') {
-        data.time += oneWayLatency / 1000;
+      if ((action === 'play' || action === 'seek') && typeof msg.time === 'number') {
+        msg.time += oneWayLatency / 1000;
       }
-      sendToPort(data);
+      sendToPort(msg);
 
     } catch (err) {
       console.error('[RVS] Error handling server message:', err);

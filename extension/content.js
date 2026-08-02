@@ -16,16 +16,18 @@ const isYouTube = isHost(hostname, 'youtube.com') || hostname === 'youtu.be';
 // ----------------------------------------------------------------------------
 // 1. Connection state — mirrored from background purely to answer the popup's
 //    GET_STATUS. The anti-feedback lock and command sequencing live inside the
-//    active player (players.js), not here.
+//    active player (players.js), not here. See connection-state.js — status,
+//    peer count, latency, and the peer's media are all private inside it;
+//    content.js only calls its methods, never reaches into that state
+//    directly.
 // ----------------------------------------------------------------------------
-let connectionStatus = 'Disconnected';
-let peersCount = 0;
-let oneWayLatency = 0;
+const connectionState = window.RVS.createConnectionState();
 
-// "Now Watching" sharing: the peer's current media, and the last url+title we
-// shared (so we only re-broadcast when either actually changes).
-let peerMedia = null;
-let lastSharedKey = null;
+// "Now Watching" sharing: the last { url, title } we shared (so we only
+// re-broadcast when either actually changes). Not part of connectionState —
+// this is content.js's own broadcast-dedup cache, unrelated to connection
+// status itself, even though it's reset alongside it below.
+let lastSentMediaInfo = null;
 
 // The write-path player adapter (players.js) and the media-sharing broadcaster
 // are only created on YouTube/Netflix (see main() below) — left null/unset
@@ -95,41 +97,34 @@ port.onMessage.addListener((msg) => {
   }
 
   if (action === 'state') {
-    peersCount = msg.peersCount;
-    if (msg.status === 'connected') {
-      connectionStatus = 'Connected';
-      // background is the authoritative room tracker (keyed by tab, not
-      // origin) — persist its roomId here too, so this origin's sessionStorage
-      // is correct even after a cross-origin navigation started it out empty.
-      if (msg.roomId) setActiveRoom(msg.roomId);
-      // Newly paired: tell the peer what we're watching right now (no-op off-site).
-      if (peersCount === 2 && shareMediaInfo) shareMediaInfo(true);
-    } else if (msg.status === 'peer_disconnected') {
-      peersCount = 1;
-      peerMedia = null;
-      // TODO: more robust handling of mid-session disconnects (e.g. pause and alert, or even remove the peer count limit and just alert?)
-      // alert('Remote user has disconnected.');
-    }
+    const { confirmedRoomId, isJustPaired } = connectionState.handleState({
+      status: msg.status,
+      peersCount: msg.peersCount,
+      roomId: msg.roomId,
+    });
+    // background is the authoritative room tracker (keyed by tab, not
+    // origin) — persist its roomId here too, so this origin's sessionStorage
+    // is correct even after a cross-origin navigation started it out empty.
+    if (confirmedRoomId) setActiveRoom(confirmedRoomId);
+    // Newly paired: tell the peer what we're watching right now (no-op off-site).
+    if (isJustPaired && shareMediaInfo) shareMediaInfo(true);
     return;
   }
 
   if (action === 'latency_update') {
-    oneWayLatency = msg.latency;
+    connectionState.handleLatencyUpdate(msg.latency);
     return;
   }
 
   if (action === 'media_info') {
     // The peer's current video. Stored for the popup to render; the URL is
     // validated there before it's turned into a clickable link.
-    peerMedia = msg.url ? { title: msg.title || msg.url, url: msg.url } : null;
+    connectionState.handleMediaInfo({ title: msg.title, url: msg.url });
     return;
   }
 
   if (action === 'error') {
-    connectionStatus = 'Disconnected';
-    peersCount = 0;
-    oneWayLatency = 0;
-    peerMedia = null;
+    connectionState.handleError();
     // Connection-level failures (e.g. server unavailable) disconnect silently and
     // keep the session so a later reload can retry; actionable server errors (room
     // full, invalid room) surface to the user and stop auto-rejoin.
@@ -146,7 +141,7 @@ port.onMessage.addListener((msg) => {
   if (!player) return;
 
   // Ignore remote playback commands while the peer is on a different video.
-  // peerMedia is kept current by the media_info handler above.
+  // peerMediaInfo is kept current by the media_info handler above.
   if (isDifferentVideoFromPeer()) return;
 
   // Sync command — the active player applies it (and parks/retries internally
@@ -158,14 +153,15 @@ port.onMessage.addListener((msg) => {
 // clicking the peer's link to "join" their video).
 const resumeRoom = getActiveRoom();
 if (resumeRoom) {
-  connectionStatus = 'Connecting';
+  connectionState.connect();
   port.postMessage({ action: 'CONNECT', roomId: resumeRoom });
 }
 
 // ----------------------------------------------------------------------------
 // 4. Canonical video identity + "different video" check. Only touches
-//    peerMedia/location.href (not the site adapter or player), so it's safe to
-//    keep unconditional; used below to gate sync-command dispatch.
+//    connectionState's peerMediaInfo snapshot and location.href (not the site
+//    adapter or player), so it's safe to keep unconditional; used below to
+//    gate sync-command dispatch.
 // ----------------------------------------------------------------------------
 function getVideoId(url) {
   try {
@@ -188,9 +184,10 @@ function getVideoId(url) {
 // (no peer media yet, or an unparseable URL) returns false, so sync isn't blocked
 // during the brief post-pairing handshake or on unrecognized URLs.
 function isDifferentVideoFromPeer() {
-  if (!peerMedia || !peerMedia.url) return false;
+  const { peerMediaInfo } = connectionState.getSnapshot();
+  if (!peerMediaInfo || !peerMediaInfo.url) return false;
   const local = getVideoId(location.href);
-  const peer = getVideoId(peerMedia.url);
+  const peer = getVideoId(peerMediaInfo.url);
   if (!local || !peer) return false;
   return local !== peer;
 }
@@ -265,17 +262,20 @@ function getLocalMedia() {
 // the background also drops media_info unless two peers are present. Pass
 // force=true to re-send even if nothing changed (e.g. just after pairing).
 shareMediaInfo = function (force) {
-  if (connectionStatus !== 'Connected' || peersCount !== 2) return;
+  const { status, peersCount } = connectionState.getSnapshot();
+  if (status !== 'Connected' || peersCount !== 2) return;
   const media = getLocalMedia();
   if (!media) return;
   // De-dupe on title *and* url, not url alone: on a Netflix episode change the new
   // title isn't in the DOM yet when we first fire (getTitle() falls back to
   // "Netflix"), so keying on url alone would latch that stale title until the next
-  // navigation. With the title in the key, the periodic re-share below corrects it
+  // navigation. Comparing both fields, the periodic re-share below corrects it
   // once the real title settles (same url, changed title).
-  const key = media.url + '\n' + media.title;
-  if (!force && key === lastSharedKey) return;
-  lastSharedKey = key;
+  const isUnchanged = lastSentMediaInfo
+    && lastSentMediaInfo.url === media.url
+    && lastSentMediaInfo.title === media.title;
+  if (!force && isUnchanged) return;
+  lastSentMediaInfo = media;
   port.postMessage({ action: 'media_info', title: media.title, url: media.url });
 };
 
@@ -373,39 +373,36 @@ function getBoundVideo() {
 // 6. Popup messages (CONNECT / DISCONNECT / GET_STATUS) — always registered, so
 //    a room can be joined/left/queried from any tab, not just YouTube/Netflix.
 // ----------------------------------------------------------------------------
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'CONNECT') {
-    connectionStatus = 'Connecting';
-    lastSharedKey = null;
-    peerMedia = null;
-    setActiveRoom(message.roomId); // remember the session so it survives navigation
-    setPrefilledRoom(message.roomId); // keep the popup's suggestion in sync with the room in use
-    port.postMessage({ action: 'CONNECT', roomId: message.roomId });
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.action === 'CONNECT') {
+    connectionState.connect();
+    lastSentMediaInfo = null;
+    setActiveRoom(msg.roomId); // remember the session so it survives navigation
+    setPrefilledRoom(msg.roomId); // keep the popup's suggestion in sync with the room in use
+    port.postMessage({ action: 'CONNECT', roomId: msg.roomId });
     sendResponse({ success: true });
     return;
   }
 
-  if (message.action === 'DISCONNECT') {
+  if (msg.action === 'DISCONNECT') {
     clearActiveRoom(); // explicit disconnect: don't auto-rejoin on reload
     port.postMessage({ action: 'DISCONNECT' });
-    connectionStatus = 'Disconnected';
-    peersCount = 0;
-    oneWayLatency = 0;
-    peerMedia = null;
-    lastSharedKey = null;
+    connectionState.disconnect();
+    lastSentMediaInfo = null;
     sendResponse({ success: true });
     return;
   }
 
-  if (message.action === 'GET_STATUS') {
+  if (msg.action === 'GET_STATUS') {
     // Seed a stable per-tab Room ID once, so reopening the popup shows the same
     // suggested ID instead of generating a new one each time.
     if (!isRoomPrefilled()) setPrefilledRoom(generateRoomId());
+    const snapshot = connectionState.getSnapshot();
     sendResponse({
-      status: connectionStatus,
-      peersCount,
-      latency: peersCount === 2 ? oneWayLatency : null,
-      peerMedia,
+      status: snapshot.status,
+      peersCount: snapshot.peersCount,
+      latency: snapshot.latency,
+      peerMediaInfo: snapshot.peerMediaInfo,
       // Active (connected) room wins; otherwise the stable per-tab suggestion.
       // Both come from sessionStorage, so the popup reflects this exact tab.
       roomId: getActiveRoom() || getPrefilledRoom(),
