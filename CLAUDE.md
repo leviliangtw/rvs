@@ -75,7 +75,7 @@ Server-originated packets (relayed by `background.js` to the content-script port
 
 ### State Lock (Anti-Feedback)
 
-Each player adapter (`players.js`) owns an internal `applying` flag so the programmatic event it produces isn't re-broadcast to the peer: before applying a remote command it sets the flag, and `content.js`'s event listeners skip broadcasting while `player.isApplying()` is true. The direct (YouTube) player clears the flag 250ms after applying via `setTimeout`. The bridge (Netflix) player clears it ~300ms after the bridge's `ack` arrives (with a 4.5s safety-net timeout), since the bridge applies the command asynchronously.
+Each player adapter (`players.js`) owns an internal `isApplying` flag so the programmatic event it produces isn't re-broadcast to the peer: before applying a remote command it sets the flag, and `content.js`'s event listeners skip broadcasting while `player.isApplying()` is true. The direct (YouTube) player clears the flag 250ms after applying via `setTimeout`. The bridge (Netflix) player clears it ~300ms after the bridge's `ack` arrives (with a 4.5s safety-net timeout), since the bridge applies the command asynchronously.
 
 ### Latency Compensation
 

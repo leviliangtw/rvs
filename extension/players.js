@@ -14,7 +14,7 @@
   // deps.getVideo() returns a connected <video> (re-finding it if the SPA swapped
   // it out), or null when none exists yet.
   const createDirectPlayer = ({ getVideo }) => {
-    let applying = false;
+    let isApplying = false;
     let resetTimer = null;
     let pending = null; // { msg, timer } — a command parked until the <video> exists
 
@@ -46,7 +46,7 @@
         return;
       }
 
-      applying = true;
+      isApplying = true;
       const { action } = msg;
       if (action === 'play') {
         seekVideo(video, Math.min(video.duration || Infinity, msg.time));
@@ -60,7 +60,7 @@
       }
 
       clearTimeout(resetTimer);
-      resetTimer = setTimeout(() => { applying = false; }, 250);
+      resetTimer = setTimeout(() => { isApplying = false; }, 250);
     }
 
     function onVideoReady() {
@@ -71,7 +71,7 @@
       apply(msg);
     }
 
-    return { apply, isApplying: () => applying, onVideoReady };
+    return { apply, isApplying: () => isApplying, onVideoReady };
   };
 
   // Netflix: never touch the <video> (triggers M7375). Drive the official player
@@ -79,31 +79,31 @@
   // since the write path doesn't read the element and never parks (the bridge
   // waits for the player itself).
   const createBridgePlayer = () => {
-    let applying = false;
+    let isApplying = false;
     let resetTimer = null;
     let cmdSeq = 0;
 
     window.addEventListener('message', (event) => {
       if (event.source !== window) return;
-      const d = event.data;
-      if (!d || typeof d !== 'object') return;
+      const msg = event.data;
+      if (!msg || typeof msg !== 'object') return;
 
-      if (d.__rvs === 'bridge-ready') {
+      if (msg.__rvs === 'bridge-ready') {
         console.log('[RVS] Netflix bridge ready.');
-      } else if (d.__rvs === 'ack') {
-        if (!d.ok) console.warn('[RVS] Bridge command failed:', d.reason);
+      } else if (msg.__rvs === 'ack') {
+        if (!msg.ok) console.warn('[RVS] Bridge command failed:', msg.reason);
         // Resume capture shortly after the bridge applied the command, so the
         // native events it produced (play/seeked/...) aren't re-broadcast.
         clearTimeout(resetTimer);
-        resetTimer = setTimeout(() => { applying = false; }, 300);
+        resetTimer = setTimeout(() => { isApplying = false; }, 300);
       }
     });
 
     function apply(msg) {
-      applying = true;
+      isApplying = true;
       // Safety net: resume capture even if no ack arrives (player never appeared).
       clearTimeout(resetTimer);
-      resetTimer = setTimeout(() => { applying = false; }, 4500);
+      resetTimer = setTimeout(() => { isApplying = false; }, 4500);
 
       const cmd = { __rvs: 'cmd', id: ++cmdSeq, action: msg.action };
       if (msg.action === 'play' || msg.action === 'seek') {
@@ -114,7 +114,7 @@
       window.postMessage(cmd, '*');
     }
 
-    return { apply, isApplying: () => applying, onVideoReady() {} };
+    return { apply, isApplying: () => isApplying, onVideoReady() {} };
   };
 
   window.RVS = { createDirectPlayer, createBridgePlayer };

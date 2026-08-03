@@ -181,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Update the peer's "Now Watching" link
-    renderMedia(peerMediaEl, response.peerMedia);
+    renderMedia(peerMediaEl, response.peerMediaInfo);
   });
 
   // Only http(s) URLs on YouTube/Netflix become clickable links. The peer's URL

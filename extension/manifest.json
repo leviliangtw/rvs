@@ -20,6 +20,7 @@
       ],
       "js": [
         "players.js",
+        "connection-state.js",
         "content.js"
       ],
       "run_at": "document_idle"

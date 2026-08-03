@@ -41,8 +41,8 @@
     return new Promise((resolve) => {
       const start = Date.now();
       const tick = () => {
-        const p = getPlayer();
-        if (p) return resolve(p);
+        const player = getPlayer();
+        if (player) return resolve(player);
         if (Date.now() - start >= timeoutMs) return resolve(null);
         setTimeout(tick, 200);
       };
@@ -103,9 +103,9 @@
 
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
-    const d = event.data;
-    if (!d || d.__rvs !== 'cmd') return;
-    handleCommand(d);
+    const cmd = event.data;
+    if (!cmd || cmd.__rvs !== 'cmd') return;
+    handleCommand(cmd);
   });
 
   window.postMessage({ __rvs: 'bridge-ready' }, '*');
