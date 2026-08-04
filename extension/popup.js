@@ -107,10 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
           updateUIForUnsupportedPage();
           return;
         }
-        currentStatus = 'Disconnected';
-        statusValue.textContent = 'Disconnected';
-        statusValue.className = 'status-value status-disconnected';
-        setConnectBtnLabel('Disconnected');
+        renderStatus('Disconnected');
       });
       return;
     }
@@ -131,10 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (response.success) {
-        currentStatus = 'Connecting';
-        statusValue.textContent = 'Connecting...';
-        statusValue.className = 'status-value status-connecting';
-        setConnectBtnLabel('Connecting');
+        renderStatus('Connecting');
       } else {
         const errMsg = (response && response.error) ? response.error : 'Unknown error';
         alert(`Failed to trigger connection: ${errMsg}`);
@@ -157,17 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
       isRoomIdLocked = true;
     }
 
-    // Update connection status
-    currentStatus = response.status;
-    statusValue.textContent = response.status;
-    if (response.status === 'Connected') {
-      statusValue.className = 'status-value status-connected';
-    } else if (response.status === 'Connecting') {
-      statusValue.className = 'status-value status-connecting';
-    } else {
-      statusValue.className = 'status-value status-disconnected';
-    }
-    setConnectBtnLabel(response.status);
+    renderStatus(response.status);
 
     // Update peer counts
     peersValue.textContent = `${response.peersCount} / 2`;
@@ -241,13 +225,31 @@ document.addEventListener('DOMContentLoaded', () => {
       roomIdInput.value = window.RVS.generateRoomId();
     }
 
-    currentStatus = 'Disconnected';
-    statusValue.textContent = 'Unsupported Page';
-    statusValue.className = 'status-value status-disconnected';
+    renderStatus('Disconnected', 'Unsupported Page');
     peersValue.textContent = '0 / 2';
     latencyValue.textContent = '-- ms';
-    setConnectBtnLabel('Disconnected');
     renderMedia(peerMediaEl, null);
+  }
+
+  // Applies a connection status to the status readout and the Connect/
+  // Disconnect button label — the single place that decides what each status
+  // looks like, so the four call sites (two optimistic updates sent before
+  // the next poll confirms, the poll itself, and the unsupported-page
+  // fallback) can never independently disagree on shape again. They briefly
+  // did: CONNECT's optimistic update hardcoded 'Connecting...', but the poll
+  // wrote the raw 'Connecting' a moment later, flickering. textOverride
+  // covers the one legitimate case where the displayed text differs from the
+  // status driving currentStatus/the button label ('Unsupported Page' shows
+  // while currentStatus is still 'Disconnected').
+  function renderStatus(status, textOverride) {
+    currentStatus = status;
+    statusValue.textContent = textOverride || (status === 'Connecting' ? 'Connecting...' : status);
+    statusValue.className = 'status-value status-' + (
+      status === 'Connected' ? 'connected' :
+      status === 'Connecting' ? 'connecting' :
+      'disconnected'
+    );
+    setConnectBtnLabel(status);
   }
 
   // Button shows "Disconnect" while active, "Connect" otherwise.
