@@ -64,6 +64,7 @@ build/config.gypi
 .Trashes
 ehthumbs.db
 Thumbs.db
+*:Zone.Identifier
 
 # Editors & IDEs
 .vscode/
