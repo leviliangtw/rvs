@@ -45,11 +45,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // instead of a new random one. Once the field is locked (see isRoomIdLocked
   // above), we never touch it again, so we never clobber what the user is typing.
 
-  // Returns a random 6-char Room ID (A-Z0-9).
-  function generateRoomId() {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
-  }
-
   // Copy the given text to the clipboard and flash the Copy button. Shared by
   // the Copy button and Regenerate (which auto-copies the fresh ID).
   async function copyRoomId(text) {
@@ -68,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Regenerate Room ID — replace the field with a fresh ID and copy it so it's
   // ready to share immediately.
   genBtn.addEventListener('click', () => {
-    const roomId = generateRoomId();
+    const roomId = window.RVS.generateRoomId();
     roomIdInput.value = roomId;
     isRoomIdLocked = true;
     copyRoomId(roomId);
@@ -243,7 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // content script finishes loading after a real navigation) can still
     // replace this placeholder — see isRoomIdLocked above.
     if (!isRoomIdLocked && !roomIdInput.value) {
-      roomIdInput.value = generateRoomId();
+      roomIdInput.value = window.RVS.generateRoomId();
     }
 
     currentStatus = 'Disconnected';

@@ -25,6 +25,7 @@
       ],
       "js": [
         "players.js",
+        "room-id.js",
         "connection-state.js",
         "content.js"
       ],

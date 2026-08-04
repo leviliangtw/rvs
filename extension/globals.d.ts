@@ -39,13 +39,15 @@ interface RvsPlayer {
   onVideoReady(): void;
 }
 
-// popup-channel.js populates window.RVS in the popup realm; players.js and
-// connection-state.js both populate it in the content-script realm (loaded
-// in that order, each merging into window.RVS rather than overwriting it —
-// see connection-state.js). The popup realm never coexists with the
-// content-script realm, but players.js and connection-state.js do, hence
-// every member here being optional rather than assuming exactly one factory
-// is ever present.
+// popup-channel.js and room-id.js populate window.RVS in the popup realm;
+// players.js, room-id.js, and connection-state.js populate it in the
+// content-script realm (loaded in that order, each merging into window.RVS
+// rather than overwriting it — see connection-state.js). room-id.js is
+// loaded into both realms (see manifest.json and popup.html) but each realm
+// gets its own window.RVS, so this shares source, not runtime state. The
+// popup realm never coexists with the content-script realm, but multiple
+// files populate window.RVS within each one, hence every member here being
+// optional rather than assuming exactly one factory is ever present.
 interface RvsPopupChannel {
   send(msg: object, callback: (response: any) => void): void;
   watchStatus(callback: (response: any) => void): () => void;
@@ -77,6 +79,7 @@ interface RvsNamespace {
   createBridgePlayer?(): RvsPlayer;
   createPopupChannel?(): RvsPopupChannel;
   createConnectionState?(): RvsConnectionState;
+  generateRoomId?(): string;
 }
 
 interface Window {
