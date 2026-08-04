@@ -1,6 +1,6 @@
 # Privacy Policy & Single Purpose Statement
 
-**Last Updated:** May 26, 2026  
+**Last Updated:** August 4, 2026  
 **Project:** Remote Video Synchronizer (RVS)  
 **Repository:** [github.com/leviliangtw/rvs](https://github.com/leviliangtw/rvs)  
 
@@ -29,10 +29,6 @@ RVS adheres to the **Principle of Least Privilege**. We only request permissions
 ### 🌐 Active Tab Access (`activeTab`)
 * **Purpose:** To interact with the media elements on the page the user is currently viewing.
 * **Data Practice:** This permission is only triggered when the user explicitly interacts with the extension. It allows RVS to inject lightweight content scripts to bind event listeners to HTML5 `<video>` elements (capturing events such as `play`, `pause`, and `seek`).
-
-### 📑 Tab Lifecycle Tracking (`tabs`)
-* **Purpose:** To monitor tab updates and navigation lifecycles via `chrome.tabs.onUpdated`.
-* **Data Practice:** This allows the background service worker to detect when a user reloads or navigates away from a synchronized video session. Upon detection, it automatically closes stale WebSocket connections and resets the toolbar icon status, optimizing user bandwidth and privacy.
 
 ---
 
