@@ -27,6 +27,7 @@
         "players.js",
         "room-id.js",
         "connection-state.js",
+        "background-port.js",
         "content.js"
       ],
       "run_at": "document_idle"

@@ -8,7 +8,7 @@ const tabStates = new Map();
 
 // Content scripts connect here; the open port keeps the service worker alive.
 chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== 'rvs-sync') return;
+  if (port.name !== 'rvs-port') return;
 
   const tabId = port.sender.tab.id;
 

@@ -118,7 +118,7 @@ graph TD
     PC -->|chrome.tabs.sendMessage| CS
     PL -.->|window.RVS| CS
     CST -.->|window.RVS| CS
-    CS <-->|port 'rvs-sync'| BG
+    CS <-->|port 'rvs-port'| BG
     BG <-->|rebind/disconnect/handlePortMessage| TS
     TS <-->|WebSocket| WS
     CS -->|YouTube: direct control| V
@@ -227,18 +227,30 @@ event payloads between them.
   actual WebSocket and is the source of truth; this is `content.js`'s derived
   view of it.
 
+#### [`extension/background-port.js`](../extension/background-port.js) — the **Background Port**
+- `createBackgroundPort({ onMessage, onConnect })`, exposed on `window.RVS`.
+  `content.js`'s reconnecting handle to a `chrome.runtime.connect` port (name
+  `rvs-port`) to `background.js` — owns creating the port, reconnecting it
+  when it dies, and sending safely, behind `send(msg)`.
+- The port isn't a one-time connection — `connect()` runs again whenever
+  `port.onDisconnect` fires, or on `pageshow` with `event.persisted` (a
+  same-tab bfcache restore resumes `content.js`'s exact script instance with
+  its old, already-dead port). `send(msg)` catches a synchronous throw from a
+  still-undetected-dead port and reconnects instead of crashing the caller.
+- Doesn't own message routing or "resume the active room on connect" —
+  `content.js` supplies both as `onMessage` and `onConnect(send)`, since
+  both reach into domain state (`connectionState`, `player`, sessionStorage)
+  this module has no business knowing about. Not the same thing as a Tab
+  Session: a Tab Session owns the actual WebSocket in `background.js`; a
+  Background Port is `content.js`'s own handle to its port, one layer
+  further from the server.
+
 #### [`extension/content.js`](../extension/content.js)
 - Injected on **every** page (`<all_urls>`), but the video-specific integration
   (site adapter, player, DOM `MutationObserver`) is gated to a YouTube/Netflix
   hostname check — CONNECT/DISCONNECT/GET_STATUS work regardless.
-- Opens a `chrome.runtime.connect` port (name `rvs-sync`) to `background.js`.
-  The port isn't a one-time `const` — a `connectPort()` function creates it and
-  is called again whenever `port.onDisconnect` fires, or on `pageshow` with
-  `event.persisted` (a same-tab bfcache restore resumes this exact script
-  instance with its old, already-dead port). Every send goes through a
-  `sendToPort(msg)` helper that catches a synchronous throw from a
-  still-undetected-dead port and reconnects, instead of crashing the
-  `chrome.runtime.onMessage` listener.
+- Reaches `background.js` through the **Background Port** above, supplying
+  `handlePortMessage` as `onMessage` and a room-resume step as `onConnect`.
 - Finds the `<video>` via a `MutationObserver` (the SPA injects it ~1–2s after
   load) and hands it to the direct player via a `getVideo` callback; captures
   native `play`/`pause`/`seeked`/`ratechange` events on both sites (reads are
