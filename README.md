@@ -22,9 +22,7 @@ RVS has two components:
 
 The WebSocket is owned by the background service worker (not the content script),
 and Netflix writes go through a MAIN-world bridge to avoid tamper detection. For
-the full design — service-worker WebSocket ownership, the Netflix bridge, the
-message flow, and a peer-sync sequence diagram — see the
-**[Implementation Plan](docs/implementation_plan.md)**.
+the full design, see the **[Implementation Plan](docs/implementation_plan.md)**.
 
 ---
 
@@ -43,9 +41,6 @@ message flow, and a peer-sync sequence diagram — see the
   videos, and resumes once they match.
 - **Connect/Disconnect toggle** — Room ID generator, copy/paste shortcuts, and
   live status/peer-count/RTT readouts.
-
-See the [Implementation Plan](docs/implementation_plan.md) for how each of
-these actually works.
 
 ---
 
