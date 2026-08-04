@@ -5,7 +5,10 @@
 // check directly.
 //
 // Exposed on window.RVS rather than relying on cross-script lexical scope, so the
-// coupling to popup.js stays explicit, matching players.js's convention.
+// coupling to popup.js stays explicit, matching players.js's convention. Merges
+// into window.RVS (matching shared-utils.js) rather than overwriting it, since
+// both files populate window.RVS in this same popup realm and neither should
+// depend on load order to avoid wiping out what the other already set.
 
 (() => {
   'use strict';
@@ -49,5 +52,5 @@
     return { send, watchStatus };
   }
 
-  window.RVS = { createPopupChannel };
+  window.RVS = { ...window.RVS, createPopupChannel };
 })();
