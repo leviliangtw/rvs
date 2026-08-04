@@ -175,9 +175,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const u = new URL(url);
       if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
       const host = u.hostname.toLowerCase();
-      return /(^|\.)youtube\.com$/.test(host)
-        || host === 'youtu.be'
-        || /(^|\.)netflix\.com$/.test(host);
+      return window.RVS.isHost(host, 'youtube.com')
+        || window.RVS.isHost(host, 'youtu.be')
+        || window.RVS.isHost(host, 'netflix.com');
     } catch (_) {
       return false;
     }

@@ -2,16 +2,12 @@
 // sandbox/DLP policies that block explicit youtube.com/netflix.com host grants
 // don't stop the script from loading at all). CONNECT/DISCONNECT/GET_STATUS
 // work on any page, so a room can be joined and its status queried before ever
-// navigating to YouTube/Netflix. The hostname check only
+// navigating to YouTube/Netflix. The hostname check (see shared-utils.js) only
 // gates the video-specific integration (site adapter, player, DOM observer) in
-// main() — it must not be a loose substring match, since that would also fire
-// on e.g. "netflix.com.evil.example".
-function isHost(hostname, domain) {
-  return hostname === domain || hostname.endsWith('.' + domain);
-}
+// main().
 const hostname = window.location.hostname;
-const isNetflix = isHost(hostname, 'netflix.com');
-const isYouTube = isHost(hostname, 'youtube.com') || isHost(hostname, 'youtu.be');
+const isNetflix = window.RVS.isHost(hostname, 'netflix.com');
+const isYouTube = window.RVS.isHost(hostname, 'youtube.com') || window.RVS.isHost(hostname, 'youtu.be');
 
 // ----------------------------------------------------------------------------
 // 1. Connection state — mirrored from background purely to answer the popup's
@@ -179,15 +175,15 @@ function getVideoId(url) {
   try {
     const u = new URL(url);
     const host = u.hostname.toLowerCase();
-    // Reuses isHost() (see top of file) rather than a loose substring/no-op
-    // check — this runs on peerMediaInfo.url too, which arrives over the
-    // network from the peer, not just our own location.href.
-    if (isHost(host, 'netflix.com')) {
+    // Reuses window.RVS.isHost() (shared-utils.js) rather than a loose
+    // substring/no-op check — this runs on peerMediaInfo.url too, which
+    // arrives over the network from the peer, not just our own location.href.
+    if (window.RVS.isHost(host, 'netflix.com')) {
       const m = u.pathname.match(/\/watch\/(\d+)/);
       return m ? `nf:${m[1]}` : null;
     }
-    if (isHost(host, 'youtube.com') || isHost(host, 'youtu.be')) {
-      if (isHost(host, 'youtu.be')) return `yt:${u.pathname.slice(1)}`;
+    if (window.RVS.isHost(host, 'youtube.com') || window.RVS.isHost(host, 'youtu.be')) {
+      if (window.RVS.isHost(host, 'youtu.be')) return `yt:${u.pathname.slice(1)}`;
       if (u.pathname.startsWith('/shorts/')) return `yt:${u.pathname.split('/')[2] || ''}`;
       const v = u.searchParams.get('v');
       return v ? `yt:${v}` : null;

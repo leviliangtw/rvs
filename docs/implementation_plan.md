@@ -216,6 +216,26 @@ event payloads between them.
 - Each adapter owns its own **State Lock** (`isApplying`) — see
   [Sync Mechanics](#sync-mechanics) below.
 
+#### [`extension/shared-utils.js`](../extension/shared-utils.js)
+- Small, pure, no-state functions shared between the popup and content-script
+  realms — exposed on `window.RVS` in both, home for the stateless tier so
+  factories that return stateful objects (`players.js`, `connection-state.js`,
+  `background-port.js`) can each stay in their own file without this file
+  becoming a catch-all as more of these accumulate.
+- `isHost(hostname, domain)`: exact match or proper subdomain — never a loose
+  substring match, since that would also fire on e.g. `netflix.com.evil.example`.
+  The one shared "is this a YouTube/Netflix host" primitive: `content.js`
+  uses it for its own top-level `isYouTube`/`isNetflix` and for
+  `getVideoId()` classifying arbitrary URLs (including the peer's reported
+  URL, which arrives over the network); `popup.js` uses it in
+  `isSafeMediaUrl()` before turning the peer's URL into a clickable link.
+- `generateRoomId()`: a random 6-character (A-Z0-9) Room ID, used by
+  `popup.js`'s Generate button and by `content.js` to seed a stable per-tab
+  suggestion.
+- Loaded into both the content-script bundle and `popup.html` — each realm
+  gets its own copy of the script and its own `window.RVS`, so this shares
+  source, not runtime state.
+
 #### [`extension/connection-state.js`](../extension/connection-state.js) — the **Connection State**
 - `createConnectionState()`, exposed on `window.RVS` alongside `players.js`'s
   factories (merging, not overwriting, since both load into the same

@@ -25,7 +25,7 @@
       ],
       "js": [
         "players.js",
-        "room-id.js",
+        "shared-utils.js",
         "connection-state.js",
         "background-port.js",
         "content.js"
