@@ -71,11 +71,6 @@ function isRoomPrefilled() {
   return getPrefilledRoom() !== null;
 }
 
-// Random 6-char Room ID (A-Z0-9), matching the popup's Generate button.
-function generateRoomId() {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
-}
-
 // ----------------------------------------------------------------------------
 // 3. Port to background service worker. Running the WebSocket in background
 //    bypasses the page's CSP (Netflix blocks ws:// connections from content
@@ -447,7 +442,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'GET_STATUS') {
     // Seed a stable per-tab Room ID once, so reopening the popup shows the same
     // suggested ID instead of generating a new one each time.
-    if (!isRoomPrefilled()) setPrefilledRoom(generateRoomId());
+    if (!isRoomPrefilled()) setPrefilledRoom(window.RVS.generateRoomId());
     const snapshot = connectionState.getSnapshot();
     sendResponse({
       status: snapshot.status,
