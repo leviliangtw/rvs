@@ -3,10 +3,9 @@
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Install-blue.svg?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/remote-video-synchronizer/iibemhaocbfpjmmdeihioookigedahne)
 [![Chrome Extension](https://img.shields.io/badge/Chrome_Extension-Manifest_V3-blue.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Signaling Server](https://img.shields.io/badge/Signaling_Server-Node.js_/_ws-green.svg)](https://github.com/websockets/ws)
-[![Security Audited](https://img.shields.io/badge/Security-Audited-brightgreen.svg)](#-security--safety-guidelines)
 [![License](https://img.shields.io/badge/License-Apache_2.0-orange.svg)](LICENSE)
 
-A premium, high-performance, real-time **Chrome Extension & Signaling Server** that synchronizes video playback, seek times, and speed between remote users on **YouTube** and **Netflix**. Engineered with **State Lock Synchronization** and **Latency-Compensated Seeking** to guarantee frame-accurate sync regardless of network delay.
+A real-time **Chrome Extension & Signaling Server** that synchronizes video playback, seek times, and speed between remote users on **YouTube** and **Netflix**. Uses state-lock anti-feedback and latency-compensated seeking to keep playback in sync despite network delay.
 
 > 📦 **Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/remote-video-synchronizer/iibemhaocbfpjmmdeihioookigedahne)** — no manual loading required.
 
@@ -16,10 +15,10 @@ A premium, high-performance, real-time **Chrome Extension & Signaling Server** t
 
 RVS has two components:
 
-- **Chrome extension** (`extension/`) — injected into YouTube/Netflix tabs to
-  capture local video events and apply remote sync commands.
-- **Signaling server** (`server.js`) — a lightweight Node.js WebSocket relay that
-  routes messages between exactly two peers per room.
+- **Chrome extension** ([`extension/`](extension/)) — injected into YouTube/Netflix
+  tabs to capture local video events and apply remote sync commands.
+- **Signaling server** ([`server.js`](server.js)) — a lightweight Node.js WebSocket
+  relay that routes messages between exactly two peers per room.
 
 The WebSocket is owned by the background service worker (not the content script),
 and Netflix writes go through a MAIN-world bridge to avoid tamper detection. For
@@ -31,42 +30,22 @@ message flow, and a peer-sync sequence diagram — see the
 
 ## ✨ Features
 
-- **Two-peer rooms**: Each room holds a maximum of two peers, keeping bandwidth and
-  synchronization simple and predictable.
-- **Latency compensation**: A periodic ping/pong measures round-trip time; `play`
-  and `seek` targets are offset by the estimated one-way delay so both players land
-  at the same point.
-- **State lock (anti-feedback)**: Programmatically applied commands are flagged so
-  the resulting `play`/`pause`/`seeked` events aren't re-broadcast back to the peer.
-- **Netflix support without tamper detection**: A MAIN-world bridge drives Netflix's
-  official player API, avoiding the M7375 error caused by writing to the `<video>`
-  element directly. YouTube uses the direct path.
-- **SPA resilience**: A `MutationObserver` hooks into the `<video>` element once the
-  single-page app injects it, and re-binds if it's replaced.
-- **"Now Watching" sharing**: The popup shows your peer's current video as a title
-  with a link; clicking it navigates your current tab to "join" what they're watching,
-  and the session auto-rejoins after the page loads. Peer URLs are validated (http(s)
-  YouTube/Netflix only) before linking.
-- **Same-video gating**: Play/pause/seek/speed sync is suppressed when the two peers
-  are on different videos (compared by canonical video ID), and resumes automatically
-  once they're on the same one.
-- **Connect/Disconnect toggle**: The popup connects or cleanly disconnects from a
-  room, with a randomized Room ID generator, copy/paste shortcuts, and live status,
-  peer-count, and RTT readouts.
+- **Two-peer rooms** — each room holds a maximum of two peers.
+- **Latency compensation** — `play`/`seek` targets are offset by the measured
+  one-way delay.
+- **State lock (anti-feedback)** — programmatic commands don't get re-broadcast
+  back to the peer.
+- **Netflix support without tamper detection** — a MAIN-world bridge drives
+  Netflix's official player API instead of writing to the `<video>` element.
+- **SPA resilience** — re-binds to the `<video>` element if the page replaces it.
+- **"Now Watching" sharing** — see your peer's current video and click to join it.
+- **Same-video gating** — sync pauses automatically when peers are on different
+  videos, and resumes once they match.
+- **Connect/Disconnect toggle** — Room ID generator, copy/paste shortcuts, and
+  live status/peer-count/RTT readouts.
 
----
-
-## 📁 Repository Structure
-
-| Path | Purpose |
-| :--- | :--- |
-| [`extension/`](extension/) | The packaged Chrome extension (Manifest V3) — popup, content script, service worker, and Netflix bridge. See the [per-file design](docs/implementation_plan.md#component-design). |
-| [`server.js`](server.js) | Node.js WebSocket signaling server; relays between two peers per room. Reads `PORT`/`HOST` env vars. |
-| [`docs/`](docs/) | Project documentation — see [Documentation](#-documentation) below. |
-| [`CONTEXT.md`](CONTEXT.md) | Domain glossary — the vocabulary this codebase uses for its own architectural concepts (Tab Session, Connection State, Popup Channel, etc.). |
-| [`CONTRIBUTION.md`](CONTRIBUTION.md) | Contributor workflow: branching, linting, and the version-bump release process. |
-| [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) | Privacy policy for the published extension. |
-| [`TERMS_OF_SERVICE.md`](TERMS_OF_SERVICE.md) | Terms of Service governing use of the extension and signaling server. |
+See the [Implementation Plan](docs/implementation_plan.md) for how each of
+these actually works.
 
 ---
 
@@ -80,11 +59,16 @@ Install [Node.js](https://nodejs.org/) (v16+).
 
 ### 2. Set up and start the signaling server
 
-1. Install dependencies:
+1. Clone the repository and move into it:
+   ```bash
+   git clone https://github.com/leviliangtw/rvs.git
+   cd rvs
+   ```
+2. Install dependencies:
    ```bash
    npm install
    ```
-2. Start the local server:
+3. Start the local server:
    ```bash
    npm start
    ```
@@ -121,35 +105,17 @@ tabs):
 
 ---
 
-## 🔒 Security & Safety Guidelines
-
-- **No `innerHTML`**: DOM updates use `textContent` and `createElement`, avoiding a
-  common XSS vector.
-- **Local-only by default**: The signaling server binds to `127.0.0.1:8080` unless
-  `HOST` is set, so it isn't exposed externally during local testing.
-- **Graceful fallbacks**: If the browser blocks clipboard access, the popup falls
-  back to a console warning and a user prompt instead of failing silently.
-
----
-
 ## 📚 Documentation
 
 | Document | What's inside |
 | :--- | :--- |
 | [Implementation Plan](docs/implementation_plan.md) | System architecture, message flow, per-file design, sync mechanics, and the peer-sync sequence diagram. |
 | [Deployment Plan](docs/deployment_plan.md) | Production deployment: TLS/WSS reverse proxy, systemd, and automated Chrome Web Store publishing. |
-| [Contribution Guide](CONTRIBUTION.md) | Branching, linting, and the version-bump release workflow. |
+| [Contribution Guide](CONTRIBUTION.md) | Contributions welcome — branching, linting, and the version-bump release workflow. |
 | [Domain Glossary](CONTEXT.md) | Vocabulary for this codebase's own architectural concepts. |
 | [ADRs](docs/adr/) | Architecture decision records — load-bearing design decisions and why they were made. |
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome. Work on a `type/short-description` branch, run
-`npm run lint`, and open a PR into `main`. **Only bump the extension version when
-you intend to ship a release** — see [CONTRIBUTION.md](CONTRIBUTION.md) for the
-complete workflow.
+| [Privacy Policy](PRIVACY_POLICY.md) | What data the extension collects/transmits, and why. |
+| [Terms of Service](TERMS_OF_SERVICE.md) | Terms governing use of the extension and signaling server. |
 
 ---
 
