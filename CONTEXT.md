@@ -27,3 +27,13 @@ Not the same thing as a **Tab Session** despite the name similarity: a Tab Sessi
 `lastSentMediaInfo` (the de-dupe cache for `shareMediaInfo`'s own broadcasts) is deliberately *not* part of this module — it's reset alongside connection state at the same call sites, but it's `main()`'s own "Now Watching" broadcast bookkeeping, not connection status.
 
 `connection-state.js` merges into `window.RVS` (`window.RVS = { ...window.RVS, createConnectionState }`) rather than overwriting it like `players.js` does — the two now coexist in the same content-script realm (see `players.js`'s load-order note in `manifest.json`), so whichever loads second has to preserve what the first one set.
+
+## Background Port
+
+`content.js`'s reconnecting port to `background.js` (`extension/background-port.js`, `createBackgroundPort({ onMessage, onConnect })`, exposed on `window.RVS`). Owns creating the `chrome.runtime.connect` port, reconnecting it when it dies, and sending safely, behind `send(msg)` — `content.js` never touches the port object directly, only through `send()` and the two callbacks it supplies.
+
+Extracted from `content.js` for the same reason as a **Tab Session**: a port can die without `content.js` being re-injected — a same-tab back/forward restore from the bfcache resumes that exact script instance with its old, already-dead port, and a service-worker restart kills the port even while the page never navigates at all. This module reconnects in both cases (on `port.onDisconnect`, and on `pageshow` with `event.persisted`) so `send()` always has a shot at a live port, retrying once via reconnect if a send still catches a port that died in the gap before either listener fired.
+
+Deliberately does **not** own `handlePortMessage()` — `content.js` passes it in as `onMessage` instead of the module owning message routing itself, because that function reaches into `connectionState`, `player`, and the sessionStorage room helpers, none of which this module knows about. Also doesn't own the "resume an active room on connect" step — that's the `onConnect(send)` callback `content.js` supplies, called on every successful connect (the first one and every reconnect alike), for the same reason: resuming touches `connectionState.connect()`, which is domain state this module has no business reaching into. This module's scope is exactly "keep a live port, send safely" — nothing about what the messages mean.
+
+Not the same thing as a **Tab Session** despite solving a parallel problem: a Tab Session (`background.js`) owns the actual WebSocket to the signaling server and is the source of truth; a Background Port is `content.js`'s own reconnecting handle to *its* port, one layer further from the server.
