@@ -11,7 +11,7 @@ function isHost(hostname, domain) {
 }
 const hostname = window.location.hostname;
 const isNetflix = isHost(hostname, 'netflix.com');
-const isYouTube = isHost(hostname, 'youtube.com') || hostname === 'youtu.be';
+const isYouTube = isHost(hostname, 'youtube.com') || isHost(hostname, 'youtu.be');
 
 // ----------------------------------------------------------------------------
 // 1. Connection state — mirrored from background purely to answer the popup's
@@ -179,14 +179,20 @@ function getVideoId(url) {
   try {
     const u = new URL(url);
     const host = u.hostname.toLowerCase();
-    if (host.includes('netflix.com')) {
+    // Reuses isHost() (see top of file) rather than a loose substring/no-op
+    // check — this runs on peerMediaInfo.url too, which arrives over the
+    // network from the peer, not just our own location.href.
+    if (isHost(host, 'netflix.com')) {
       const m = u.pathname.match(/\/watch\/(\d+)/);
       return m ? `nf:${m[1]}` : null;
     }
-    if (host === 'youtu.be') return `yt:${u.pathname.slice(1)}`;
-    if (u.pathname.startsWith('/shorts/')) return `yt:${u.pathname.split('/')[2] || ''}`;
-    const v = u.searchParams.get('v');
-    return v ? `yt:${v}` : null;
+    if (isHost(host, 'youtube.com') || isHost(host, 'youtu.be')) {
+      if (isHost(host, 'youtu.be')) return `yt:${u.pathname.slice(1)}`;
+      if (u.pathname.startsWith('/shorts/')) return `yt:${u.pathname.split('/')[2] || ''}`;
+      const v = u.searchParams.get('v');
+      return v ? `yt:${v}` : null;
+    }
+    return null;
   } catch (_) {
     return null;
   }
