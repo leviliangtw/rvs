@@ -71,6 +71,14 @@ function isRoomPrefilled() {
   return getPrefilledRoom() !== null;
 }
 
+// The room ID the popup should show for this tab: the active (connected)
+// room wins over the prefilled suggestion. Named so a caller that just wants
+// "the room to display" doesn't need to independently know both keys exist
+// or their precedence.
+function getEffectiveRoomId() {
+  return getActiveRoom() || getPrefilledRoom();
+}
+
 // ----------------------------------------------------------------------------
 // 3. Port to background service worker. Running the WebSocket in background
 //    bypasses the page's CSP (Netflix blocks ws:// connections from content
@@ -347,12 +355,22 @@ findAndBindVideo();
 const videoObserver = new MutationObserver(() => {
   const current = document.querySelector('video');
   if (current && current !== videoElement) {
-    isReadEventListenersBound = false;
-    videoElement = null;
-    findAndBindVideo();
+    rebindVideo();
   }
 });
 videoObserver.observe(document.documentElement, { childList: true, subtree: true });
+
+// Reset video-binding state and re-discover the <video> — shared by the
+// MutationObserver above (the SPA swapped the element) and getBoundVideo()
+// below (the bound element was detached from the DOM). Both need to reset
+// isReadEventListenersBound alongside videoElement, or bindVideoReadEvents()
+// would see listeners as already attached (to a now-dead element) and skip
+// rebinding them to the new one.
+function rebindVideo() {
+  isReadEventListenersBound = false;
+  videoElement = null;
+  findAndBindVideo();
+}
 
 function findAndBindVideo() {
   const video = document.querySelector('video');
@@ -406,9 +424,7 @@ function bindVideoReadEvents(video) {
 // createDirectPlayer so the player file has no implicit dependency on this state.
 function getBoundVideo() {
   if (videoElement && !videoElement.isConnected) {
-    isReadEventListenersBound = false;
-    videoElement = null;
-    findAndBindVideo();
+    rebindVideo();
   }
   return videoElement || document.querySelector('video');
 }
@@ -449,9 +465,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       peersCount: snapshot.peersCount,
       latency: snapshot.latency,
       peerMediaInfo: snapshot.peerMediaInfo,
-      // Active (connected) room wins; otherwise the stable per-tab suggestion.
-      // Both come from sessionStorage, so the popup reflects this exact tab.
-      roomId: getActiveRoom() || getPrefilledRoom(),
+      roomId: getEffectiveRoomId(),
     });
   }
 });
