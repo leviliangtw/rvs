@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- 背景紅色圓形 -->
+  <circle cx="16" cy="16" r="14" fill="#ff5252" />
+  <!-- 2px 寬度、20% 透明度的立體感黑邊 -->
+  <circle cx="16" cy="16" r="14" fill="none" stroke="rgba(0, 0, 0, 0.2)" stroke-width="2" />
+  <!-- 中央白色播放三角形 -->
+  <polygon points="13,11 13,21 21,16" fill="#ffffff" />
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <circle cx="64" cy="64" r="56" fill="#00e676" />
+  
+  <circle cx="64" cy="64" r="56" fill="none" stroke="rgba(0, 0, 0, 0.2)" stroke-width="8" />
+  
+  <polygon points="52,44 52,84 84,64" fill="#ffffff" />
+</svg>

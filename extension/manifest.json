@@ -7,6 +7,11 @@
     "activeTab",
     "clipboardRead"
   ],
+  "icons": {
+    "16": "icons/rvs_green_64.png",
+    "48": "icons/rvs_green_64.png",
+    "128": "icons/rvs_green_128.png"
+  },
   "action": {
     "default_popup": "popup.html"
   },
