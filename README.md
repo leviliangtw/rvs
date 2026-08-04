@@ -63,8 +63,8 @@ message flow, and a peer-sync sequence diagram — see the
 | [`extension/`](extension/) | The packaged Chrome extension (Manifest V3) — popup, content script, service worker, and Netflix bridge. See the [per-file design](docs/implementation_plan.md#component-design). |
 | [`server.js`](server.js) | Node.js WebSocket signaling server; relays between two peers per room. Reads `PORT`/`HOST` env vars. |
 | [`docs/`](docs/) | Project documentation — see [Documentation](#-documentation) below. |
+| [`CONTEXT.md`](CONTEXT.md) | Domain glossary — the vocabulary this codebase uses for its own architectural concepts (Tab Session, Connection State, Popup Channel, etc.). |
 | [`CONTRIBUTION.md`](CONTRIBUTION.md) | Contributor workflow: branching, linting, and the version-bump release process. |
-| [`task.md`](task.md) | Development milestones and verification checklist. |
 | [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) | Privacy policy for the published extension. |
 | [`TERMS_OF_SERVICE.md`](TERMS_OF_SERVICE.md) | Terms of Service governing use of the extension and signaling server. |
 
@@ -139,7 +139,8 @@ tabs):
 | [Implementation Plan](docs/implementation_plan.md) | System architecture, message flow, per-file design, sync mechanics, and the peer-sync sequence diagram. |
 | [Deployment Plan](docs/deployment_plan.md) | Production deployment: TLS/WSS reverse proxy, systemd, and automated Chrome Web Store publishing. |
 | [Contribution Guide](CONTRIBUTION.md) | Branching, linting, and the version-bump release workflow. |
-| [Walkthrough](docs/walkthrough.md) | Annotated end-to-end verification run. |
+| [Domain Glossary](CONTEXT.md) | Vocabulary for this codebase's own architectural concepts. |
+| [ADRs](docs/adr/) | Architecture decision records — load-bearing design decisions and why they were made. |
 
 ---
 

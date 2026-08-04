@@ -88,7 +88,7 @@ architecture and the reasoning behind these constraints.
 ## 4. Versioning & Releasing
 
 RVS ships from a single source of truth: the `version` field in
-[`extension/manifest.json`](extension/manifest.json) (currently `1.1.3`). It uses
+[`extension/manifest.json`](extension/manifest.json). It uses
 [Semantic Versioning](https://semver.org/) — `MAJOR.MINOR.PATCH`.
 
 > [!IMPORTANT]
@@ -116,8 +116,8 @@ state (the PR base, or `HEAD^` on `main`):
 
 ### Cutting a release
 
-1. Create a release branch, e.g. `git checkout -b chore/release-1.1.4`.
-2. Bump `version` in `extension/manifest.json` (e.g. `1.1.3` → `1.1.4`) following
+1. Create a release branch, e.g. `git checkout -b chore/release-X.Y.Z`.
+2. Bump `version` in `extension/manifest.json` to the next `X.Y.Z` following
    SemVer:
    - **PATCH** — bug fixes, no behavior change for users.
    - **MINOR** — new backward-compatible functionality.
@@ -141,6 +141,6 @@ state (the PR base, or `HEAD^` on `main`):
 - [ ] `npm run lint` passes and code is Prettier-formatted.
 - [ ] No `innerHTML`; Netflix writes still go through `netflix-bridge.js`.
 - [ ] Manually verified sync between two tabs (see
-      [docs/walkthrough.md](docs/walkthrough.md)).
+      [README → How to Test and Use](README.md#-how-to-test-and-use)).
 - [ ] `extension/manifest.json` `version` bumped **only if** this PR is a release.
 - [ ] Docs updated if behavior or configuration changed.

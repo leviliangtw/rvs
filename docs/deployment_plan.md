@@ -56,8 +56,8 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
 # 3. Clone or copy the project
-scp -r /home/levil/rvs user@your-server-ip:~/rvs
-# OR: git clone your-repo ~/rvs
+git clone your-repo ~/rvs
+# OR, from a local checkout: scp -r /path/to/rvs user@your-server-ip:~/rvs
 
 # 4. Install dependencies
 cd ~/rvs && npm install --production
@@ -144,7 +144,7 @@ const WS_SERVER_URL = 'wss://sync.yourdomain.com';
 
 ### Configuration Before Packaging
 
-Edit [extension/config.js](file:///home/levil/rvs/extension/config.js) — this is the **only file** you need to change:
+Edit [`extension/config.js`](../extension/config.js) — this is the **only file** you need to change:
 
 ```js
 // Change this to your production server URL
@@ -184,9 +184,8 @@ steps are in [CONTRIBUTION.md → Versioning & Releasing](../CONTRIBUTION.md#4-v
 For the first publish, or if you need to upload without CI:
 
 1. Create a [Chrome Developer account](https://chrome.google.com/webstore/devconsole) ($5 one-time fee)
-2. Zip the extension directory:
+2. Zip the extension directory (from the repo root):
    ```bash
-   cd /home/levil/rvs
    zip -r rvs-extension.zip extension/
    ```
 3. Upload the `.zip` to the Chrome Web Store Developer Dashboard
