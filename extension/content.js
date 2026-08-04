@@ -82,15 +82,18 @@ function generateRoomId() {
 //    scripts via its strict connect-src). The open port also keeps the MV3
 //    service worker alive for the lifetime of the tab. Opened on every page (not
 //    just YouTube/Netflix) so a room can be joined/left and queried from any tab.
+//
+// A port can die without this content script being re-injected: a same-tab
+// back/forward restore from the bfcache resumes this exact script with its
+// old, already-dead port (see the pageshow listener below), and a
+// service-worker restart kills the port even while this page never
+// navigates at all. connectPort() is called again in both cases so `port`
+// always ends up pointing at a live connection; sendToPort() guards
+// individual sends against the brief window before a dead port is detected.
 // ----------------------------------------------------------------------------
-const port = chrome.runtime.connect({ name: 'rvs-sync' });
+let port = null;
 
-console.log('[RVS] Content script injected.');
-
-// Registered immediately, before any of the (possibly slow) DOM/observer setup
-// in main() below, so a status sync background sends the instant this port
-// connects (see background.js's onConnect rebind path) is never missed.
-port.onMessage.addListener((msg) => {
+function handlePortMessage(msg) {
   const { action } = msg;
   if (action === 'state' || action === 'error') {
     console.log(`[RVS] port message: ${JSON.stringify(msg)}`);
@@ -147,15 +150,63 @@ port.onMessage.addListener((msg) => {
   // Sync command — the active player applies it (and parks/retries internally
   // on the direct path if the <video> isn't ready yet).
   player.apply(msg);
-});
-
-// Resume an active session after a navigation/reload within this tab (e.g. after
-// clicking the peer's link to "join" their video).
-const resumeRoom = getActiveRoom();
-if (resumeRoom) {
-  connectionState.connect();
-  port.postMessage({ action: 'CONNECT', roomId: resumeRoom });
 }
+
+// Safe postMessage — port may be mid-reconnect or briefly dead (e.g. this
+// same script resumed from the bfcache before pageshow below has run).
+function sendToPort(msg) {
+  if (!port) return;
+  try {
+    port.postMessage(msg);
+  } catch (err) {
+    console.warn('[RVS] sendToPort failed, reconnecting:', err);
+    connectPort();
+  }
+}
+
+// (Re)connects to background.js and, if a room is active (see the
+// sessionStorage helpers above), resumes it. Covers both this script's very
+// first connection and recovering from an unexpected port disconnect — the
+// same resume step either way, since from content.js's side the two look
+// identical: no live port, and sessionStorage says which room (if any) it
+// should be in.
+function connectPort() {
+  try {
+    port = chrome.runtime.connect({ name: 'rvs-sync' });
+  } catch (err) {
+    // Extension context invalidated (e.g. the extension was reloaded/updated
+    // while this page was open) — nothing left to reconnect to until the
+    // page itself reloads.
+    console.error('[RVS] Failed to connect to background.js:', err);
+    port = null;
+    return;
+  }
+
+  // Registered immediately, before any of the (possibly slow) DOM/observer
+  // setup in main() below, so a status sync background sends the instant
+  // this port connects (see background.js's onConnect rebind path) is never
+  // missed.
+  port.onMessage.addListener(handlePortMessage);
+  port.onDisconnect.addListener(connectPort);
+
+  const resumeRoom = getActiveRoom();
+  if (resumeRoom) {
+    connectionState.connect();
+    sendToPort({ action: 'CONNECT', roomId: resumeRoom });
+  }
+}
+
+connectPort();
+
+console.log('[RVS] Content script injected.');
+
+// A same-tab back/forward restore resumes this exact script instance with
+// its old port already dead (see connectPort's comment above) — reconnect
+// the moment the page becomes interactive again, rather than waiting for
+// the next sendToPort() call to discover it the hard way.
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) connectPort();
+});
 
 // ----------------------------------------------------------------------------
 // 4. Canonical video identity + "different video" check. Only touches
@@ -276,7 +327,7 @@ shareMediaInfo = function (force) {
     && lastSentMediaInfo.title === media.title;
   if (!force && isUnchanged) return;
   lastSentMediaInfo = media;
-  port.postMessage({ action: 'media_info', title: media.title, url: media.url });
+  sendToPort({ action: 'media_info', title: media.title, url: media.url });
 };
 
 // Periodically re-share the local video so the peer follows navigation to a new
@@ -334,22 +385,22 @@ function bindVideoReadEvents(video) {
 
   video.addEventListener('play', () => {
     if (shouldSkipReadBroadcast()) return;
-    port.postMessage({ action: 'play', time: video.currentTime });
+    sendToPort({ action: 'play', time: video.currentTime });
   });
 
   video.addEventListener('pause', () => {
     if (shouldSkipReadBroadcast()) return;
-    port.postMessage({ action: 'pause', time: video.currentTime });
+    sendToPort({ action: 'pause', time: video.currentTime });
   });
 
   video.addEventListener('seeked', () => {
     if (shouldSkipReadBroadcast()) return;
-    port.postMessage({ action: 'seek', time: video.currentTime });
+    sendToPort({ action: 'seek', time: video.currentTime });
   });
 
   video.addEventListener('ratechange', () => {
     if (shouldSkipReadBroadcast()) return;
-    port.postMessage({ action: 'rate', rate: video.playbackRate });
+    sendToPort({ action: 'rate', rate: video.playbackRate });
   });
 
   isReadEventListenersBound = true;
@@ -379,14 +430,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     lastSentMediaInfo = null;
     setActiveRoom(msg.roomId); // remember the session so it survives navigation
     setPrefilledRoom(msg.roomId); // keep the popup's suggestion in sync with the room in use
-    port.postMessage({ action: 'CONNECT', roomId: msg.roomId });
+    sendToPort({ action: 'CONNECT', roomId: msg.roomId });
     sendResponse({ success: true });
     return;
   }
 
   if (msg.action === 'DISCONNECT') {
     clearActiveRoom(); // explicit disconnect: don't auto-rejoin on reload
-    port.postMessage({ action: 'DISCONNECT' });
+    sendToPort({ action: 'DISCONNECT' });
     connectionState.disconnect();
     lastSentMediaInfo = null;
     sendResponse({ success: true });
