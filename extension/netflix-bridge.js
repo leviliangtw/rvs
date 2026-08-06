@@ -12,19 +12,6 @@
 (() => {
   'use strict';
 
-  /**
-   * The command envelope players.js's bridge player posts via
-   * window.postMessage. `action` matches RvsSyncCommand's union
-   * (globals.d.ts); __rvs/id are the postMessage envelope, not part of that
-   * shared shape, so this is its own local typedef rather than reusing it.
-   * @typedef {object} RvsBridgeCommand
-   * @property {'cmd'} __rvs
-   * @property {number} id
-   * @property {'play' | 'pause' | 'seek' | 'rate'} action
-   * @property {number} [time]
-   * @property {number} [rate]
-   */
-
   // Injected on <all_urls> (see manifest — no host_permissions, so corporate
   // sandbox/DLP policies blocking an explicit netflix.com host grant don't stop
   // the bridge from loading at all); this hostname check is what actually

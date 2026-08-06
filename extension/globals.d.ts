@@ -39,6 +39,21 @@ interface RvsPlayer {
   onVideoReady(): void;
 }
 
+// The command envelope players.js's bridge player (createBridgePlayer, in
+// the isolated content-script world) posts via window.postMessage, and
+// netflix-bridge.js (the MAIN-world bridge) receives. `action`/`time`/`rate`
+// match RvsSyncCommand; __rvs/id are the postMessage envelope on top of
+// that. Unlike every other interface in this file, this isn't shared via
+// window.RVS — the two realms don't share one — it's shared purely as a
+// compile-time contract both sides must agree on independently.
+interface RvsBridgeCommand {
+  __rvs: 'cmd';
+  id: number;
+  action: 'play' | 'pause' | 'seek' | 'rate';
+  time?: number;
+  rate?: number;
+}
+
 // popup-channel.js and shared-utils.js populate window.RVS in the popup
 // realm; players.js, shared-utils.js, connection-state.js, and
 // background-port.js populate it in the content-script realm. Every one of
