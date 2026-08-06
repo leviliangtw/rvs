@@ -1,4 +1,3 @@
-// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 // connection-state.js — content.js's local mirror of the popup-facing
 // connection status: is this tab connected, how many peers, the round-trip
 // latency, and what the peer is currently watching. Exposed on window.RVS
@@ -21,6 +20,7 @@
     let status = 'Disconnected';
     let peersCount = 0;
     let oneWayLatency = 0;
+    /** @type {{ title: string, url: string } | null} */
     let peerMediaInfo = null;
 
     function setToConnecting() {
