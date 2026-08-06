@@ -1,4 +1,3 @@
-// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 // background-port.js — content.js's reconnecting port to background.js.
 // Owns creating the chrome.runtime.connect port, reconnecting it when it
 // dies, and sending safely — content.js supplies what a message means
@@ -20,9 +19,18 @@
   // CSP (Netflix blocks ws:// connections from content scripts via its
   // strict connect-src), and the open port keeps the MV3 service worker
   // alive for the tab's lifetime.
+  /**
+   * @param {{
+   *   onMessage: (msg: any) => void,
+   *   onConnect: (send: (msg: object) => void) => void,
+   * }} deps
+   * @returns {RvsBackgroundPort}
+   */
   function createBackgroundPort({ onMessage, onConnect }) {
+    /** @type {chrome.runtime.Port | null} */
     let port = null;
 
+    /** @param {object} msg */
     function send(msg) {
       if (!port) return;
       try {
