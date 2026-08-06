@@ -1,4 +1,3 @@
-// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 // netflix-bridge.js — runs in the page's MAIN world (see manifest "world": "MAIN").
 //
 // Netflix's player owns the <video> element through an internal state machine.
@@ -12,6 +11,19 @@
 
 (() => {
   'use strict';
+
+  /**
+   * The command envelope players.js's bridge player posts via
+   * window.postMessage. `action` matches RvsSyncCommand's union
+   * (globals.d.ts); __rvs/id are the postMessage envelope, not part of that
+   * shared shape, so this is its own local typedef rather than reusing it.
+   * @typedef {object} RvsBridgeCommand
+   * @property {'cmd'} __rvs
+   * @property {number} id
+   * @property {'play' | 'pause' | 'seek' | 'rate'} action
+   * @property {number} [time]
+   * @property {number} [rate]
+   */
 
   // Injected on <all_urls> (see manifest — no host_permissions, so corporate
   // sandbox/DLP policies blocking an explicit netflix.com host grant don't stop
@@ -29,7 +41,9 @@
       const vp = api.videoPlayer;
       const sessionIds = vp.getAllPlayerSessionIds() || [];
       // Prefer the main 'watch' session over preview/billboard sessions.
-      const sessionId = sessionIds.find((id) => String(id).includes('watch')) || sessionIds[0];
+      // Netflix's internal session-id shape is undocumented — kept as `any`
+      // like the `api` cast above, rather than guessing a fake precise type.
+      const sessionId = sessionIds.find((/** @type {any} */ id) => String(id).includes('watch')) || sessionIds[0];
       if (!sessionId) return null;
       return vp.getVideoPlayerBySessionId(sessionId) || null;
     } catch (_) {
@@ -38,6 +52,7 @@
   }
 
   // Poll for the player up to timeoutMs (it appears a beat after navigation).
+  /** @param {number} timeoutMs */
   function withPlayer(timeoutMs) {
     return new Promise((resolve) => {
       const start = Date.now();
@@ -51,10 +66,16 @@
     });
   }
 
+  /**
+   * @param {number} id
+   * @param {boolean} ok
+   * @param {string} [reason]
+   */
   function ack(id, ok, reason) {
     window.postMessage({ __rvs: 'ack', id, ok, reason }, '*');
   }
 
+  /** @param {RvsBridgeCommand} cmd */
   async function handleCommand(cmd) {
     const player = await withPlayer(4000);
     if (!player) {
@@ -63,7 +84,7 @@
     }
 
     try {
-      const toMs = (sec) => {
+      const toMs = (/** @type {number} */ sec) => {
         let ms = Math.max(0, Math.round(sec * 1000));
         if (typeof player.getDuration === 'function') {
           const dur = player.getDuration();
