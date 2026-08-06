@@ -1,4 +1,3 @@
-// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 const { WebSocketServer } = require('ws');
 
 // Port and Host configuration
@@ -11,11 +10,13 @@ const wss = new WebSocketServer({ port: PORT, host: HOST });
 
 // In-memory room manager
 // roomId -> Array of WebSocket client objects
+/** @type {Map<string, import('ws').WebSocket[]>} */
 const rooms = new Map();
 
 console.log(`Remote Video Synchronizer (RVS) Signaling Server running on ws://${HOST}:${PORT}`);
 
 wss.on('connection', (ws) => {
+  /** @type {string | null} */
   let currentRoomId = null;
 
   ws.on('message', (message) => {
@@ -101,6 +102,10 @@ wss.on('connection', (ws) => {
 });
 
 // Helper to remove client from a room and clean up if empty
+/**
+ * @param {import('ws').WebSocket} ws
+ * @param {string | null} roomId
+ */
 function leaveRoom(ws, roomId) {
   if (!roomId || !rooms.has(roomId)) return;
 
