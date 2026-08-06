@@ -1,3 +1,4 @@
+// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 // background-port.js — content.js's reconnecting port to background.js.
 // Owns creating the chrome.runtime.connect port, reconnecting it when it
 // dies, and sending safely — content.js supplies what a message means

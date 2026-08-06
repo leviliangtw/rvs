@@ -1,3 +1,4 @@
+// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 // Injected on <all_urls> (see manifest — no host_permissions, so the corporate
 // sandbox/DLP policies that block explicit youtube.com/netflix.com host grants
 // don't stop the script from loading at all). CONNECT/DISCONNECT/GET_STATUS

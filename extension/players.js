@@ -1,3 +1,4 @@
+// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 // players.js — the two write-path adapters, loaded before content.js (same
 // isolated world). Each owns its own anti-feedback lock timing so content.js just
 // calls player.apply(msg) / player.isApplying(). Incoming msg.time already carries

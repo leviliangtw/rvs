@@ -1,3 +1,4 @@
+// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 // tab-session.js — one tab's connection lifecycle: the WebSocket to the
 // signaling server, the port to that tab's content script, and the
 // room-membership/latency-ping state. Loaded into background.js via

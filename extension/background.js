@@ -1,3 +1,4 @@
+// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 importScripts('config.js', 'tab-session.js');
 
 // tabId → TabSession (see tab-session.js). background.js only ever calls

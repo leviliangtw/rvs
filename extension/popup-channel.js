@@ -1,3 +1,4 @@
+// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 // popup-channel.js — the popup's transport to the active tab's content script.
 // Loaded before popup.js (same convention as players.js -> content.js): an IIFE
 // exposing a factory on window.RVS, so popup.js only ever sees send()/watchStatus()
