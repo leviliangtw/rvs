@@ -1,4 +1,3 @@
-// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 // Injected on <all_urls> (see manifest — no host_permissions, so the corporate
 // sandbox/DLP policies that block explicit youtube.com/netflix.com host grants
 // don't stop the script from loading at all). CONNECT/DISCONNECT/GET_STATUS
@@ -24,13 +23,16 @@ const connectionState = window.RVS.createConnectionState();
 // re-broadcast when either actually changes). Not part of connectionState —
 // this is content.js's own broadcast-dedup cache, unrelated to connection
 // status itself, even though it's reset alongside it below.
+/** @type {{ url: string, title: string } | null} */
 let lastSentMediaInfo = null;
 
 // The write-path player adapter (players.js) and the media-sharing broadcaster
 // are only created on YouTube/Netflix (see main() below) — left null/unset
 // elsewhere so the message handlers below can skip video-specific work
 // off-site instead of erroring.
+/** @type {RvsPlayer | null} */
 let player = null;
+/** @type {((force: boolean) => void) | null} */
 let shareMediaInfo = null;
 
 // ----------------------------------------------------------------------------
@@ -43,6 +45,7 @@ const ACTIVE_ROOM_KEY = '__rvs_active_room';
 function getActiveRoom() {
   try { return sessionStorage.getItem(ACTIVE_ROOM_KEY); } catch (_) { return null; }
 }
+/** @param {string} roomId */
 function setActiveRoom(roomId) {
   try { sessionStorage.setItem(ACTIVE_ROOM_KEY, roomId); } catch (_) {}
 }
@@ -61,6 +64,7 @@ const PREFILLED_ROOM_KEY = '__rvs_prefilled_room';
 function getPrefilledRoom() {
   try { return sessionStorage.getItem(PREFILLED_ROOM_KEY); } catch (_) { return null; }
 }
+/** @param {string} roomId */
 function setPrefilledRoom(roomId) {
   try { sessionStorage.setItem(PREFILLED_ROOM_KEY, roomId); } catch (_) {}
 }
@@ -85,6 +89,7 @@ function getEffectiveRoomId() {
 //    and what to do once a connection is live (the onConnect callback).
 // ----------------------------------------------------------------------------
 
+/** @param {any} msg */
 function handlePortMessage(msg) {
   const { action } = msg;
   if (action === 'state' || action === 'error') {
@@ -172,6 +177,7 @@ console.log('[RVS] Content script injected.');
 //    adapter or player), so it's safe to keep unconditional; used below to
 //    gate sync-command dispatch.
 // ----------------------------------------------------------------------------
+/** @param {string} url */
 function getVideoId(url) {
   try {
     const u = new URL(url);
@@ -246,6 +252,7 @@ function makeSite() {
 }
 const site = makeSite();
 
+/** @type {HTMLVideoElement | null} */
 let videoElement = null;
 let isReadEventListenersBound = false;
 
@@ -348,6 +355,7 @@ function findAndBindVideo() {
   player.onVideoReady();
 }
 
+/** @param {HTMLVideoElement} video */
 function bindVideoReadEvents(video) {
   if (isReadEventListenersBound) return;
 
