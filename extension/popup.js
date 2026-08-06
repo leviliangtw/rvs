@@ -9,44 +9,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const pasteBtn = document.getElementById('paste-btn');
   const peerMediaEl = document.getElementById('peer-media');
 
-  // Show the extension version (read from the manifest, so it never drifts).
+  // Read from the manifest so it never drifts from the shipped version.
   const versionEl = document.getElementById('version');
   if (versionEl) versionEl.textContent = 'v' + chrome.runtime.getManifest().version;
 
-  // Tracks the latest known connection status so the button can toggle behavior.
   let currentStatus = 'Disconnected';
 
   // True once the Room ID field has received a real value (from content.js)
   // or a direct user edit (typing, Regenerate, Paste) — after that, this
   // popup-open session never programmatically touches the field again, no
   // matter what the field holds. Without this, clearing the field to type a
-  // new ID (or a fresh Regenerate/Paste) left a window where the field was
-  // momentarily empty; the 1s status poll saw that as "safe to prefill" and
-  // put the old value straight back, fighting the user's own edit.
+  // new ID left a window where the field was momentarily empty; the 1s
+  // status poll saw that as "safe to prefill" and put the old value back,
+  // fighting the user's own edit.
   //
   // While still unlocked, the field holds either nothing or a locally
   // generated placeholder (from updateUIForUnsupportedPage) — never a real
   // value, since receiving one locks the field immediately. That's what lets
   // the watchStatus guard below check just isRoomIdLocked: a transient
-  // content-script hiccup right after a real navigation (e.g. clicking the
-  // peer's "Now Watching" link) can trigger "Unsupported Page" for a single
-  // poll tick before the fresh content script finishes loading, and this way
-  // the real Room ID that follows can still land once it arrives.
+  // content-script hiccup right after a real navigation can trigger
+  // "Unsupported Page" for a single poll tick before the fresh content
+  // script finishes loading, and this way the real Room ID that follows can
+  // still land once it arrives.
   let isRoomIdLocked = false;
 
-  // Transport to the active tab's content script — see popup-channel.js. Hides
-  // chrome.tabs.query/sendMessage and the lastError-means-unsupported-page check.
+  // See popup-channel.js — hides chrome.tabs.query/sendMessage and
+  // normalizes the lastError-means-unsupported-page case to a null response.
   const channel = window.RVS.createPopupChannel();
 
-  // The Room ID is per-tab: it's prefilled from the active tab's own state
-  // (reported by its content script), never from global storage. A fresh tab
-  // gets a stable generated ID — the content script persists it in
-  // sessionStorage (isRoomPrefilled), so reopening the popup keeps the same ID
-  // instead of a new random one. Once the field is locked (see isRoomIdLocked
-  // above), we never touch it again, so we never clobber what the user is typing.
-
-  // Copy the given text to the clipboard and flash the Copy button. Shared by
-  // the Copy button and Regenerate (which auto-copies the fresh ID).
+  // Copy the given text to the clipboard and flash the Copy button.
   /** @param {string} text */
   async function copyRoomId(text) {
     try {
@@ -61,112 +52,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Regenerate Room ID — replace the field with a fresh ID and copy it so it's
-  // ready to share immediately.
-  genBtn.addEventListener('click', () => {
-    const roomId = window.RVS.generateRoomId();
-    roomIdInput.value = roomId;
-    isRoomIdLocked = true;
-    copyRoomId(roomId);
-  });
-
-  // Manual edits lock the field — never auto-filled again this popup session.
-  roomIdInput.addEventListener('input', () => {
-    isRoomIdLocked = true;
-  });
-
-  // Copy Room ID
-  copyBtn.addEventListener('click', () => {
-    const text = roomIdInput.value.trim().toUpperCase();
-    if (!text) {
-      alert('Room ID is empty.');
-      return;
-    }
-    copyRoomId(text);
-  });
-
-  // Paste Room ID
-  pasteBtn.addEventListener('click', async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text) {
-        roomIdInput.value = text.trim().toUpperCase();
-        isRoomIdLocked = true;
-      }
-    } catch (err) {
-      console.warn('Clipboard read restricted:', err);
-      alert('Clipboard access is restricted by the browser. Please use Ctrl+V / Cmd+V to paste.');
-    }
-  });
-
-  // Handle Connect/Disconnect toggle click
-  connectBtn.addEventListener('click', () => {
-    // If already connected/connecting, this button disconnects instead.
-    if (currentStatus === 'Connected' || currentStatus === 'Connecting') {
-      channel.send({ action: 'DISCONNECT' }, (response) => {
-        if (!response) {
-          updateUIForUnsupportedPage();
-          return;
-        }
-        renderStatus('Disconnected');
-      });
-      return;
-    }
-
-    const roomId = roomIdInput.value.trim().toUpperCase();
-
-    if (!roomId) {
-      alert('Please enter a Room ID'); // Native alert as explicitly requested for MVP simplicity
-      return;
-    }
-
-    // Send connection command to the active tab's content script
-    // (content.js persists the room per-tab in sessionStorage)
-    channel.send({ action: 'CONNECT', roomId: roomId }, (response) => {
-      if (!response) {
-        updateUIForUnsupportedPage();
-        return;
-      }
-
-      if (response.success) {
-        renderStatus('Connecting');
-      } else {
-        const errMsg = (response && response.error) ? response.error : 'Unknown error';
-        alert(`Failed to trigger connection: ${errMsg}`);
-      }
-    });
-  });
-
-  // Watch content script connection status. The channel polls internally (see
-  // popup-channel.js) and tears the poll down when the popup document closes.
-  channel.watchStatus((response) => {
-    if (!response) {
-      updateUIForUnsupportedPage();
-      return;
-    }
-
-    // Prefill the field with this tab's room (active room, or the stable
-    // per-tab suggestion the content script persists) — once, then lock it.
-    if (!isRoomIdLocked && response.roomId) {
-      roomIdInput.value = response.roomId;
-      isRoomIdLocked = true;
-    }
-
-    renderStatus(response.status);
-
-    // Update peer counts
-    peersValue.textContent = `${response.peersCount} / 2`;
-
-    // Update latency readings
-    if (response.latency !== null && response.latency !== undefined) {
-      latencyValue.textContent = `${Math.round(response.latency)} ms`;
-    } else {
-      latencyValue.textContent = '-- ms';
-    }
-
-    // Update the peer's "Now Watching" link
-    renderMedia(peerMediaEl, response.peerMediaInfo);
-  });
+  // Applies a connection status to the status readout and the Connect/
+  // Disconnect button label — the single place that decides what each status
+  // looks like, so the four call sites (two optimistic updates sent before
+  // the next poll confirms, the poll itself, and the unsupported-page
+  // fallback) can never independently disagree on shape again. They briefly
+  // did: CONNECT's optimistic update hardcoded 'Connecting...', but the poll
+  // wrote the raw 'Connecting' a moment later, flickering. textOverride
+  // covers the one legitimate case where the displayed text differs from the
+  // status driving currentStatus/the button label ('Unsupported Page' shows
+  // while currentStatus is still 'Disconnected').
+  /**
+   * @param {string} status
+   * @param {string} [textOverride]
+   */
+  function renderStatus(status, textOverride) {
+    currentStatus = status;
+    statusValue.textContent = textOverride || (status === 'Connecting' ? 'Connecting...' : status);
+    statusValue.className = 'status-value status-' + (
+      status === 'Connected' ? 'connected' :
+      status === 'Connecting' ? 'connecting' :
+      'disconnected'
+    );
+    connectBtn.textContent = (status === 'Connected' || status === 'Connecting') ? 'Disconnect' : 'Connect';
+  }
 
   // Only http(s) URLs on YouTube/Netflix become clickable links. The peer's URL
   // is untrusted, so this blocks javascript:/data: and other schemes that would
@@ -221,12 +130,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateUIForUnsupportedPage() {
-    // Unsupported pages have no content script to provide/persist an ID, so seed
-    // one locally when the field is empty — the field is ready to share from any
-    // tab. (Without a content script this can't persist across popup opens.)
-    // Deliberately doesn't lock the field: a genuine roomId (e.g. once a fresh
-    // content script finishes loading after a real navigation) can still
-    // replace this placeholder — see isRoomIdLocked above.
+    // Unsupported pages have no content script to provide/persist an ID, so
+    // seed one locally when the field is empty. Deliberately doesn't lock the
+    // field: a genuine roomId (e.g. once a fresh content script finishes
+    // loading after a real navigation) can still replace this placeholder.
     if (!isRoomIdLocked && !roomIdInput.value) {
       roomIdInput.value = window.RVS.generateRoomId();
     }
@@ -237,35 +144,99 @@ document.addEventListener('DOMContentLoaded', () => {
     renderMedia(peerMediaEl, null);
   }
 
-  // Applies a connection status to the status readout and the Connect/
-  // Disconnect button label — the single place that decides what each status
-  // looks like, so the four call sites (two optimistic updates sent before
-  // the next poll confirms, the poll itself, and the unsupported-page
-  // fallback) can never independently disagree on shape again. They briefly
-  // did: CONNECT's optimistic update hardcoded 'Connecting...', but the poll
-  // wrote the raw 'Connecting' a moment later, flickering. textOverride
-  // covers the one legitimate case where the displayed text differs from the
-  // status driving currentStatus/the button label ('Unsupported Page' shows
-  // while currentStatus is still 'Disconnected').
-  /**
-   * @param {string} status
-   * @param {string} [textOverride]
-   */
-  function renderStatus(status, textOverride) {
-    currentStatus = status;
-    statusValue.textContent = textOverride || (status === 'Connecting' ? 'Connecting...' : status);
-    statusValue.className = 'status-value status-' + (
-      status === 'Connected' ? 'connected' :
-      status === 'Connecting' ? 'connecting' :
-      'disconnected'
-    );
-    setConnectBtnLabel(status);
-  }
+  genBtn.addEventListener('click', () => {
+    const roomId = window.RVS.generateRoomId();
+    roomIdInput.value = roomId;
+    isRoomIdLocked = true;
+    copyRoomId(roomId);
+  });
 
-  // Button shows "Disconnect" while active, "Connect" otherwise.
-  /** @param {string} status */
-  function setConnectBtnLabel(status) {
-    connectBtn.textContent =
-      (status === 'Connected' || status === 'Connecting') ? 'Disconnect' : 'Connect';
-  }
+  // Manual edits lock the field — never auto-filled again this popup session.
+  roomIdInput.addEventListener('input', () => {
+    isRoomIdLocked = true;
+  });
+
+  copyBtn.addEventListener('click', () => {
+    const text = roomIdInput.value.trim().toUpperCase();
+    if (!text) {
+      alert('Room ID is empty.');
+      return;
+    }
+    copyRoomId(text);
+  });
+
+  pasteBtn.addEventListener('click', async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        roomIdInput.value = text.trim().toUpperCase();
+        isRoomIdLocked = true;
+      }
+    } catch (err) {
+      console.warn('Clipboard read restricted:', err);
+      alert('Clipboard access is restricted by the browser. Please use Ctrl+V / Cmd+V to paste.');
+    }
+  });
+
+  connectBtn.addEventListener('click', () => {
+    // If already connected/connecting, this button disconnects instead.
+    if (currentStatus === 'Connected' || currentStatus === 'Connecting') {
+      channel.send({ action: 'DISCONNECT' }, (response) => {
+        if (!response) {
+          updateUIForUnsupportedPage();
+          return;
+        }
+        renderStatus('Disconnected');
+      });
+      return;
+    }
+
+    const roomId = roomIdInput.value.trim().toUpperCase();
+
+    if (!roomId) {
+      alert('Please enter a Room ID'); // Native alert as explicitly requested for MVP simplicity
+      return;
+    }
+
+    channel.send({ action: 'CONNECT', roomId: roomId }, (response) => {
+      if (!response) {
+        updateUIForUnsupportedPage();
+        return;
+      }
+
+      if (response.success) {
+        renderStatus('Connecting');
+      } else {
+        const errMsg = (response && response.error) ? response.error : 'Unknown error';
+        alert(`Failed to trigger connection: ${errMsg}`);
+      }
+    });
+  });
+
+  // The channel polls internally (see popup-channel.js) and tears the poll
+  // down when the popup document closes.
+  channel.watchStatus((response) => {
+    if (!response) {
+      updateUIForUnsupportedPage();
+      return;
+    }
+
+    // Prefill the field with this tab's room (active room, or the stable
+    // per-tab suggestion the content script persists) — once, then lock it.
+    if (!isRoomIdLocked && response.roomId) {
+      roomIdInput.value = response.roomId;
+      isRoomIdLocked = true;
+    }
+
+    renderStatus(response.status);
+    peersValue.textContent = `${response.peersCount} / 2`;
+
+    if (response.latency !== null && response.latency !== undefined) {
+      latencyValue.textContent = `${Math.round(response.latency)} ms`;
+    } else {
+      latencyValue.textContent = '-- ms';
+    }
+
+    renderMedia(peerMediaEl, response.peerMediaInfo);
+  });
 });
