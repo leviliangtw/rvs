@@ -1,4 +1,3 @@
-// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 importScripts('config.js', 'tab-session.js');
 
 // tabId → TabSession (see tab-session.js). background.js only ever calls
@@ -43,6 +42,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   }
 });
 
+/**
+ * @param {number} tabId
+ * @param {string} status
+ */
 function updateIcon(tabId, status) {
   let color = '#ff5252';
   if (status === 'Connecting') color = '#ffb300';
