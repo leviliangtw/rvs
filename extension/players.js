@@ -1,4 +1,3 @@
-// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 // players.js — the two write-path adapters, loaded before content.js (same
 // isolated world). Each owns its own anti-feedback lock timing so content.js just
 // calls player.apply(msg) / player.isApplying(). Incoming msg.time already carries
@@ -14,12 +13,23 @@
   // YouTube: write the <video> element directly.
   // deps.getVideo() returns a connected <video> (re-finding it if the SPA swapped
   // it out), or null when none exists yet.
+  /**
+   * @param {{ getVideo: () => HTMLVideoElement | null }} deps
+   * @returns {RvsPlayer}
+   */
   const createDirectPlayer = ({ getVideo }) => {
     let isApplying = false;
+    /** @type {ReturnType<typeof setTimeout> | null} */
     let resetTimer = null;
-    let pending = null; // { msg, timer } — a command parked until the <video> exists
+    // A command parked until the <video> exists.
+    /** @type {{ msg: RvsSyncCommand, timer: ReturnType<typeof setTimeout> } | null} */
+    let pending = null;
 
     // Resilient seek: waits for metadata if the element isn't ready yet.
+    /**
+     * @param {HTMLVideoElement} video
+     * @param {number} targetTime
+     */
     function seekVideo(video, targetTime) {
       try {
         if (video.readyState >= 1) {
@@ -34,6 +44,7 @@
       }
     }
 
+    /** @param {RvsSyncCommand} msg */
     function apply(msg) {
       const video = getVideo();
       if (!video) {
@@ -79,8 +90,10 @@
   // API via the main-world bridge — postMessage out and ack back. No video deps,
   // since the write path doesn't read the element and never parks (the bridge
   // waits for the player itself).
+  /** @returns {RvsPlayer} */
   const createBridgePlayer = () => {
     let isApplying = false;
+    /** @type {ReturnType<typeof setTimeout> | null} */
     let resetTimer = null;
     let cmdSeq = 0;
 
@@ -100,12 +113,14 @@
       }
     });
 
+    /** @param {RvsSyncCommand} msg */
     function apply(msg) {
       isApplying = true;
       // Safety net: resume capture even if no ack arrives (player never appeared).
       clearTimeout(resetTimer);
       resetTimer = setTimeout(() => { isApplying = false; }, 4500);
 
+      /** @type {RvsBridgeCommand} */
       const cmd = { __rvs: 'cmd', id: ++cmdSeq, action: msg.action };
       if (msg.action === 'play' || msg.action === 'seek') {
         cmd.time = msg.time;
