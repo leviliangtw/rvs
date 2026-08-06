@@ -1,4 +1,3 @@
-// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 document.addEventListener('DOMContentLoaded', () => {
   const roomIdInput = /** @type {HTMLInputElement} */ (document.getElementById('room-id'));
   const connectBtn = document.getElementById('connect-btn');
@@ -48,6 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Copy the given text to the clipboard and flash the Copy button. Shared by
   // the Copy button and Regenerate (which auto-copies the fresh ID).
+  /** @param {string} text */
   async function copyRoomId(text) {
     try {
       await navigator.clipboard.writeText(text);
@@ -171,6 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Only http(s) URLs on YouTube/Netflix become clickable links. The peer's URL
   // is untrusted, so this blocks javascript:/data: and other schemes that would
   // otherwise execute in the popup when clicked.
+  /** @param {string} url */
   function isSafeMediaUrl(url) {
     try {
       const u = new URL(url);
@@ -187,6 +188,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Render a media entry into `el` as a hyperlink (or plain text if the URL isn't
   // a trusted, clickable one). Built with createElement/textContent — never
   // innerHTML — so a malicious title/URL can't inject markup.
+  /**
+   * @param {HTMLElement} el
+   * @param {{ title: string, url: string } | null} media
+   */
   function renderMedia(el, media) {
     el.replaceChildren();
     if (!media || !media.url) {
@@ -242,6 +247,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // covers the one legitimate case where the displayed text differs from the
   // status driving currentStatus/the button label ('Unsupported Page' shows
   // while currentStatus is still 'Disconnected').
+  /**
+   * @param {string} status
+   * @param {string} [textOverride]
+   */
   function renderStatus(status, textOverride) {
     currentStatus = status;
     statusValue.textContent = textOverride || (status === 'Connecting' ? 'Connecting...' : status);
@@ -254,6 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Button shows "Disconnect" while active, "Connect" otherwise.
+  /** @param {string} status */
   function setConnectBtnLabel(status) {
     connectBtn.textContent =
       (status === 'Connected' || status === 'Connecting') ? 'Disconnect' : 'Connect';
