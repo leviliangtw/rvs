@@ -1,4 +1,3 @@
-// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 // shared-utils.js — stateless utility functions shared between the popup
 // realm (popup.html) and the content-script realm (manifest.json's
 // content_scripts). Each realm gets its own copy of this script and its own
@@ -19,6 +18,11 @@
   // getVideoId() classifying arbitrary URLs (including the peer's reported
   // URL, which arrives over the network); used by popup.js's
   // isSafeMediaUrl() before turning the peer's URL into a clickable link.
+  /**
+   * @param {string} hostname
+   * @param {string} domain
+   * @returns {boolean}
+   */
   function isHost(hostname, domain) {
     return hostname === domain || hostname.endsWith('.' + domain);
   }
