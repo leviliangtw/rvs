@@ -1,4 +1,3 @@
-// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 // tab-session.js — one tab's connection lifecycle: the WebSocket to the
 // signaling server, the port to that tab's content script, and the
 // room-membership/latency-ping state. Loaded into background.js via
@@ -13,6 +12,7 @@
 // against fixed fixture strings) rather than an inline regex buried inside
 // createTabSession()'s disconnect(). If Chrome ever changes this wording,
 // this is the one place that needs updating.
+/** @param {string | undefined} reason */
 function isBfcacheDisconnectReason(reason) {
   return /back\/forward cache/.test(reason || '');
 }
@@ -31,13 +31,22 @@ function isBfcacheDisconnectReason(reason) {
 // dependency order — each function only calls things already defined above
 // it — down to the public interface at the bottom, which is the only part
 // background.js ever touches.
+/**
+ * @param {number} tabId
+ * @param {{ updateIcon: (tabId: number, status: string) => void }} deps
+ * @returns {TabSession}
+ */
 function createTabSession(tabId, { updateIcon }) {
+  /** @type {chrome.runtime.Port | null} */
   let port = null;
+  /** @type {WebSocket | null} */
   let socket = null;
+  /** @type {string | null} */
   let roomId = null;
   let status = 'Disconnected';
   let peersCount = 0;
   let oneWayLatency = 0;
+  /** @type {ReturnType<typeof setInterval> | null} */
   let pingInterval = null;
 
   // The WebSocket lifecycle and the latency-ping loop below aren't
@@ -45,7 +54,13 @@ function createTabSession(tabId, { updateIcon }) {
   // and stops them — which is why they're interleaved by dependency order
   // here rather than grouped under separate headers.
 
-  // Safe postMessage — port may already be disconnected.
+  // Safe postMessage — port may already be disconnected. Deliberately
+  // untyped (`any`), matching handlePortMessage below and
+  // background-port.js's RvsBackgroundPort.onMessage: the packet shape
+  // genuinely varies (relayed server messages, synthesized latency_update,
+  // etc.), validated at the receiving end rather than statically
+  // discriminated here.
+  /** @param {any} msg */
   function sendToPort(msg) {
     if (!port) return;
     try { port.postMessage(msg); } catch (_) {}
@@ -80,6 +95,7 @@ function createTabSession(tabId, { updateIcon }) {
     updateIcon(tabId, 'Disconnected');
   }
 
+  /** @param {string} rawMessage */
   function handleServerMessage(rawMessage) {
     try {
       const msg = JSON.parse(rawMessage);
@@ -140,6 +156,7 @@ function createTabSession(tabId, { updateIcon }) {
     }
   }
 
+  /** @param {string} newRoomId */
   function openWebSocket(newRoomId) {
     // Already connected/connecting to this exact room — happens whenever a
     // rebound port's content script resends its routine resumeRoom CONNECT
@@ -192,6 +209,7 @@ function createTabSession(tabId, { updateIcon }) {
   // connected, since a freshly-injected content script otherwise defaults
   // to "Connecting" and would wait on the next server message to correct
   // itself — which may not arrive for a while if the room is quiet.
+  /** @param {chrome.runtime.Port} newPort */
   function rebind(newPort) {
     const isRebind = port !== null;
     console.log(`[RVS] tab=${tabId} onConnect rebind=${isRebind} status=${status} roomId=${roomId}`);
@@ -208,6 +226,10 @@ function createTabSession(tabId, { updateIcon }) {
   // never touches chrome.* APIs directly. Returns true when the session is
   // actually gone and the caller should delete it from tabStates; false
   // means "keep this session, a port will rebind onto it later."
+  /**
+   * @param {chrome.runtime.Port} deadPort
+   * @param {string | undefined} lastErrorMessage
+   */
   function disconnect(deadPort, lastErrorMessage) {
     const isStale = port !== deadPort;
 
@@ -230,6 +252,7 @@ function createTabSession(tabId, { updateIcon }) {
     return true;
   }
 
+  /** @param {any} msg */
   function handlePortMessage(msg) {
     if (msg.action === 'CONNECT') {
       openWebSocket(msg.roomId);
