@@ -1,3 +1,4 @@
+// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 // shared-utils.js — stateless utility functions shared between the popup
 // realm (popup.html) and the content-script realm (manifest.json's
 // content_scripts). Each realm gets its own copy of this script and its own

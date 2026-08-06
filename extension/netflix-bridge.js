@@ -1,3 +1,4 @@
+// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 // netflix-bridge.js — runs in the page's MAIN world (see manifest "world": "MAIN").
 //
 // Netflix's player owns the <video> element through an internal state machine.

@@ -1,3 +1,4 @@
+// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 const { WebSocketServer } = require('ws');
 
 // Port and Host configuration

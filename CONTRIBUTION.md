@@ -72,6 +72,12 @@ Prettier settings (`.prettierrc`): single quotes, no semicolons, 2-space indent.
 `jsconfig.json` enables editor type-checking against the `@types/*` packages, so
 keep new code type-clean.
 
+**`noImplicitAny` is on.** Every parameter and variable needs an inferable or
+explicit type — no implicit `any`. New code must be clean; touching an
+existing file with a leading `// @ts-nocheck` is a good moment to remove it
+(fix what `npx tsc -p jsconfig.json --noEmit` then reports), but isn't
+required just for an unrelated change to that file.
+
 Project conventions worth preserving:
 
 - **No `innerHTML`.** Build DOM with `textContent` / `createElement` (XSS safety).

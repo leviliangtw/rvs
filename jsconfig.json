@@ -7,7 +7,7 @@
     "moduleResolution": "node16",
     "typeRoots": ["./node_modules/@types"],
     "strict": false,
-    "noImplicitAny": false,
+    "noImplicitAny": true,
     "skipLibCheck": true
   },
   "include": ["server.js", "extension/**/*.js", "extension/**/*.d.ts"],

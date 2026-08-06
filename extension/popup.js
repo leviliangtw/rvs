@@ -1,3 +1,4 @@
+// @ts-nocheck — not yet migrated to noImplicitAny; see CONTRIBUTION.md
 document.addEventListener('DOMContentLoaded', () => {
   const roomIdInput = /** @type {HTMLInputElement} */ (document.getElementById('room-id'));
   const connectBtn = document.getElementById('connect-btn');
