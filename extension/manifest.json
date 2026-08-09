@@ -28,6 +28,7 @@
         "shared-utils.js",
         "connection-state.js",
         "background-port.js",
+        "video-integration.js",
         "content.js"
       ],
       "run_at": "document_idle"

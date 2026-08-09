@@ -95,6 +95,17 @@ interface RvsBackgroundPort {
   send(msg: object): void;
 }
 
+// video-integration.js's deep module: the YouTube/Netflix-only half of
+// content.js's job (the <video> element, the write-path player, and the
+// "Now Watching" broadcaster) behind one seam. content.js decides whether
+// to construct one at all (see ADR-0001) and holds exactly this interface —
+// never a player or a media-sharing function of its own.
+interface RvsVideoIntegration {
+  apply(msg: RvsSyncCommand): void;
+  shareMediaInfo(force: boolean): void;
+  forgetSharedMedia(): void;
+}
+
 interface RvsNamespace {
   createDirectPlayer?(deps: { getVideo: () => HTMLVideoElement | null }): RvsPlayer;
   createBridgePlayer?(): RvsPlayer;
@@ -105,6 +116,12 @@ interface RvsNamespace {
     onMessage: (msg: any) => void;
     onConnect: (send: (msg: object) => void) => void;
   }): RvsBackgroundPort;
+  createVideoIntegration?(deps: {
+    isNetflix: boolean;
+    getSnapshot: () => RvsConnectionSnapshot;
+    send: (msg: object) => void;
+    isDifferentVideoFromPeer: () => boolean;
+  }): RvsVideoIntegration;
   isHost?(hostname: string, domain: string): boolean;
 }
 
