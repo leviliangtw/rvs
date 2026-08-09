@@ -1,13 +1,16 @@
-// shared-utils.js — stateless utility functions shared between the popup
-// realm (popup.html) and the content-script realm (manifest.json's
-// content_scripts). Each realm gets its own copy of this script and its own
-// window.RVS, so this shares source, not runtime state, between the two.
-//
-// Home for small, pure, no-state functions only — factories that return a
-// stateful object (players.js, connection-state.js, background-port.js)
-// stay in their own file each; this file is specifically for the "just a
-// function, no state to own" tier, so it doesn't turn into a catch-all as
-// more of these accumulate.
+/**
+ * @fileoverview Stateless utility functions shared between the popup
+ * realm (popup.html) and the content-script realm (manifest.json's
+ * content_scripts). Each realm gets its own copy of this script and its
+ * own window.RVS, so this shares source, not runtime state, between the
+ * two.
+ *
+ * Home for small, pure, no-state functions only — factories that return a
+ * stateful object (players.js, connection-state.js, background-port.js)
+ * stay in their own file each; this file is specifically for the "just a
+ * function, no state to own" tier, so it doesn't turn into a catch-all as
+ * more of these accumulate.
+ */
 
 (() => {
   'use strict';

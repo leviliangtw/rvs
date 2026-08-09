@@ -1,16 +1,18 @@
-// background-port.js — content.js's reconnecting port to background.js.
-// Owns creating the chrome.runtime.connect port, reconnecting it when it
-// dies, and sending safely — content.js supplies what a message means
-// (onMessage) and what to do once a connection is live (onConnect). This
-// module has no idea what a "room" or "connection state" is.
-//
-// A port can die without content.js being re-injected: a same-tab
-// back/forward restore from the bfcache resumes that exact script instance
-// with its old, already-dead port (see the pageshow listener below), and a
-// service-worker restart kills the port even while the page never navigates
-// at all. connect() runs again in both cases so `port` always ends up
-// pointing at a live connection; send() guards individual sends against the
-// brief window before a dead port is detected.
+/**
+ * @fileoverview content.js's reconnecting port to background.js. Owns
+ * creating the chrome.runtime.connect port, reconnecting it when it dies,
+ * and sending safely — content.js supplies what a message means
+ * (onMessage) and what to do once a connection is live (onConnect). This
+ * module has no idea what a "room" or "connection state" is.
+ *
+ * A port can die without content.js being re-injected: a same-tab
+ * back/forward restore from the bfcache resumes that exact script instance
+ * with its old, already-dead port (see the pageshow listener below), and a
+ * service-worker restart kills the port even while the page never
+ * navigates at all. connect() runs again in both cases so `port` always
+ * ends up pointing at a live connection; send() guards individual sends
+ * against the brief window before a dead port is detected.
+ */
 
 (() => {
   'use strict';

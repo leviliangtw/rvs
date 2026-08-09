@@ -1,13 +1,18 @@
-// netflix-bridge.js — runs in the page's MAIN world (see manifest "world": "MAIN").
-//
-// Netflix's player owns the <video> element through an internal state machine.
-// Writing video.currentTime / .play() / .pause() directly from a content script
-// triggers Netflix tamper detection (error M7375) and tears down the player.
-//
-// This bridge instead drives playback through Netflix's official internal player
-// API — the same approach Teleparty uses. It lives in the MAIN world because the
-// API hangs off window.netflix, which is invisible to the isolated content script.
-// Commands arrive via window.postMessage from content.js; results are acked back.
+/**
+ * @fileoverview Runs in the page's MAIN world (see manifest "world":
+ * "MAIN").
+ *
+ * Netflix's player owns the <video> element through an internal state
+ * machine. Writing video.currentTime / .play() / .pause() directly from a
+ * content script triggers Netflix tamper detection (error M7375) and
+ * tears down the player.
+ *
+ * This bridge instead drives playback through Netflix's official internal
+ * player API — the same approach Teleparty uses. It lives in the MAIN
+ * world because the API hangs off window.netflix, which is invisible to
+ * the isolated content script. Commands arrive via window.postMessage
+ * from content.js; results are acked back.
+ */
 
 (() => {
   'use strict';
