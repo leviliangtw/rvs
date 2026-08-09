@@ -64,13 +64,13 @@ wss.on('connection', (ws) => {
         console.log(`Client joined room: ${cleanRoom}. Total peers: ${clientList.length}`);
 
         // Notify both clients in the room of connection status
-        clientList.forEach((client) => {
+        for (const client of clientList) {
           client.send(JSON.stringify({
             action: 'state',
             status: 'connected',
             peersCount: clientList.length
           }));
-        });
+        }
         return;
       }
 
@@ -83,11 +83,11 @@ wss.on('connection', (ws) => {
       // Relay all other actions to the other peer in the room
       const clientList = rooms.get(currentRoomId);
       if (clientList) {
-        clientList.forEach((client) => {
+        for (const client of clientList) {
           if (client !== ws && client.readyState === ws.OPEN) {
             client.send(message.toString()); // Relays the stringified JSON packet directly
           }
-        });
+        }
       }
 
     } catch (err) {
@@ -127,12 +127,12 @@ function leaveRoom(ws, roomId) {
   } else {
     rooms.set(roomId, clientList);
     // Notify the remaining client that their partner left
-    clientList.forEach((client) => {
+    for (const client of clientList) {
       client.send(JSON.stringify({
         action: 'state',
         status: 'peer_disconnected',
         peersCount: clientList.length
       }));
-    });
+    }
   }
 }
