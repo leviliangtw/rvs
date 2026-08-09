@@ -34,9 +34,13 @@
   }
   /** @param {string} roomId */
   function setActiveRoom(roomId) {
+    // sessionStorage can throw when disabled (e.g. some private-browsing
+    // modes) — losing the reload-resume convenience is an acceptable
+    // degradation, not worth surfacing.
     try { sessionStorage.setItem(ACTIVE_ROOM_KEY, roomId); } catch (_) {}
   }
   function clearActiveRoom() {
+    // Same as setActiveRoom above — nothing to clear if storage is unavailable.
     try { sessionStorage.removeItem(ACTIVE_ROOM_KEY); } catch (_) {}
   }
 
@@ -45,6 +49,7 @@
   }
   /** @param {string} roomId */
   function setPrefilledRoom(roomId) {
+    // Same as setActiveRoom above.
     try { sessionStorage.setItem(PREFILLED_ROOM_KEY, roomId); } catch (_) {}
   }
   function isRoomPrefilled() {

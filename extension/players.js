@@ -36,6 +36,8 @@
           video.currentTime = targetTime;
         } else {
           video.addEventListener('loadedmetadata', () => {
+            // Best-effort: if the element is gone or currentTime still isn't
+            // settable by the time this fires, there's nothing more to do.
             try { video.currentTime = targetTime; } catch (_) {}
           }, { once: true });
         }
