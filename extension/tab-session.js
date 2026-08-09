@@ -264,6 +264,11 @@ function createTabSession(tabId, { updateIcon }) {
     return true;
   }
 
+  // Deliberately untyped (`any`), matching sendToPort above and
+  // background-port.js's RvsBackgroundPort.onMessage: the packet shape
+  // genuinely varies (CONNECT/DISCONNECT from the popup, sync commands),
+  // validated below via the action field rather than statically
+  // discriminated.
   /** @param {any} msg */
   function handlePortMessage(msg) {
     if (msg.action === 'CONNECT') {

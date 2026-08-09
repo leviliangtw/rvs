@@ -107,6 +107,11 @@
     return local !== peer;
   }
 
+  // Deliberately untyped (`any`), matching background-port.js's
+  // RvsBackgroundPort.onMessage and tab-session.js's handlePortMessage: the
+  // packet shape genuinely varies by action (state/error/media_info/sync
+  // commands), validated below via the action field rather than statically
+  // discriminated.
   /** @param {any} msg */
   function handleBackgroundMessage(msg) {
     const { action } = msg;
