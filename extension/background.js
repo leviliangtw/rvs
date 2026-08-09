@@ -8,7 +8,9 @@ const tabStates = new Map();
 
 // Content scripts connect here; the open port keeps the service worker alive.
 chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== 'rvs-port') return;
+  if (port.name !== 'rvs-port') {
+    return;
+  }
 
   const tabId = port.sender.tab.id;
 
@@ -48,8 +50,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
  */
 function updateIcon(tabId, status) {
   let color = '#ff5252';
-  if (status === 'Connecting') color = '#ffb300';
-  else if (status === 'Connected') color = '#00e676';
+  if (status === 'Connecting') {
+    color = '#ffb300';
+  } else if (status === 'Connected') {
+    color = '#00e676';
+  }
 
   const canvas = new OffscreenCanvas(32, 32);
   const ctx = canvas.getContext('2d');

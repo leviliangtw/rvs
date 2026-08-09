@@ -51,7 +51,9 @@
       const video = getVideo();
       if (!video) {
         // Park and retry when the element appears (drained via onVideoReady).
-        if (pending) clearTimeout(pending.timer);
+        if (pending) {
+          clearTimeout(pending.timer);
+        }
         const timer = setTimeout(() => {
           pending = null;
           console.warn('[RVS] Sync command dropped: no video after 5s.');
@@ -78,7 +80,9 @@
     }
 
     function onVideoReady() {
-      if (!pending) return;
+      if (!pending) {
+        return;
+      }
       const { msg, timer } = pending;
       pending = null;
       clearTimeout(timer);
@@ -100,14 +104,20 @@
     let cmdSeq = 0;
 
     window.addEventListener('message', (event) => {
-      if (event.source !== window) return;
+      if (event.source !== window) {
+        return;
+      }
       const msg = event.data;
-      if (!msg || typeof msg !== 'object') return;
+      if (!msg || typeof msg !== 'object') {
+        return;
+      }
 
       if (msg.__rvs === 'bridge-ready') {
         console.log('[RVS] Netflix bridge ready.');
       } else if (msg.__rvs === 'ack') {
-        if (!msg.ok) console.warn('[RVS] Bridge command failed:', msg.reason);
+        if (!msg.ok) {
+          console.warn('[RVS] Bridge command failed:', msg.reason);
+        }
         // Resume capture shortly after the bridge applied the command, so the
         // native events it produced (play/seeked/...) aren't re-broadcast.
         clearTimeout(resetTimer);

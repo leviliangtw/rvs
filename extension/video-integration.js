@@ -37,7 +37,9 @@
           getTitle() {
             const el = document.querySelector('[data-uia="video-title"]');
             let title = el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
-            if (!title) title = document.title.replace(/\s*-\s*Netflix\s*$/i, '').trim();
+            if (!title) {
+              title = document.title.replace(/\s*-\s*Netflix\s*$/i, '').trim();
+            }
             return title;
           },
         };
@@ -47,7 +49,9 @@
         getTitle() {
           const el = document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1.ytd-watch-metadata');
           let title = el ? el.textContent.trim() : '';
-          if (!title) title = document.title.replace(/\s*-\s*YouTube\s*$/i, '').trim();
+          if (!title) {
+            title = document.title.replace(/\s*-\s*YouTube\s*$/i, '').trim();
+          }
           return title;
         },
       };
@@ -73,7 +77,9 @@
 
     // Best-effort local media, or null when not on a watch page. Falls back to the URL.
     function getLocalMedia() {
-      if (!site.isWatchPage()) return null;
+      if (!site.isWatchPage()) {
+        return null;
+      }
       const url = location.href;
       const title = site.getTitle();
       return { title: title || url, url };
@@ -81,7 +87,9 @@
 
     /** @param {HTMLVideoElement} video */
     function attachReadListeners(video) {
-      if (isReadListenersAttached) return;
+      if (isReadListenersAttached) {
+        return;
+      }
 
       console.log('[RVS] Video element found, listeners attached.');
 
@@ -90,22 +98,30 @@
       const shouldSkipReadBroadcast = () => player.isApplying() || isDifferentVideoFromPeer();
 
       video.addEventListener('play', () => {
-        if (shouldSkipReadBroadcast()) return;
+        if (shouldSkipReadBroadcast()) {
+          return;
+        }
         send({ action: 'play', time: video.currentTime });
       });
 
       video.addEventListener('pause', () => {
-        if (shouldSkipReadBroadcast()) return;
+        if (shouldSkipReadBroadcast()) {
+          return;
+        }
         send({ action: 'pause', time: video.currentTime });
       });
 
       video.addEventListener('seeked', () => {
-        if (shouldSkipReadBroadcast()) return;
+        if (shouldSkipReadBroadcast()) {
+          return;
+        }
         send({ action: 'seek', time: video.currentTime });
       });
 
       video.addEventListener('ratechange', () => {
-        if (shouldSkipReadBroadcast()) return;
+        if (shouldSkipReadBroadcast()) {
+          return;
+        }
         send({ action: 'rate', rate: video.playbackRate });
       });
 
@@ -114,7 +130,9 @@
 
     function discoverVideo() {
       const video = document.querySelector('video');
-      if (!video) return;
+      if (!video) {
+        return;
+      }
 
       videoElement = video;
       attachReadListeners(video);
@@ -160,9 +178,13 @@
     /** @param {boolean} force */
     function shareMediaInfo(force) {
       const { status, peersCount } = getSnapshot();
-      if (status !== 'Connected' || peersCount !== 2) return;
+      if (status !== 'Connected' || peersCount !== 2) {
+        return;
+      }
       const media = getLocalMedia();
-      if (!media) return;
+      if (!media) {
+        return;
+      }
       // De-dupe on title *and* url, not url alone: on a Netflix episode change the
       // new title isn't in the DOM yet when we first fire (getTitle() falls back
       // to "Netflix"), so keying on url alone would latch that stale title until
@@ -171,7 +193,9 @@
       const isUnchanged = lastSentMediaInfo
         && lastSentMediaInfo.url === media.url
         && lastSentMediaInfo.title === media.title;
-      if (!force && isUnchanged) return;
+      if (!force && isUnchanged) {
+        return;
+      }
       lastSentMediaInfo = media;
       send({ action: 'media_info', title: media.title, url: media.url });
     }
@@ -200,7 +224,9 @@
       // remember the rule.
       /** @param {RvsSyncCommand} msg */
       apply(msg) {
-        if (isDifferentVideoFromPeer()) return;
+        if (isDifferentVideoFromPeer()) {
+          return;
+        }
         player.apply(msg);
       },
       shareMediaInfo,

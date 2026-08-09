@@ -19,7 +19,9 @@
   // would also fire on e.g. "netflix.com.evil.example".
   const hostname = window.location.hostname;
   const isNetflix = hostname === 'netflix.com' || hostname.endsWith('.netflix.com');
-  if (!isNetflix) return;
+  if (!isNetflix) {
+    return;
+  }
 
   // Resolve the active watch-session player object, or null if not ready.
   function getPlayer() {
@@ -31,7 +33,9 @@
       // Netflix's internal session-id shape is undocumented — kept as `any`
       // like the `api` cast above, rather than guessing a fake precise type.
       const sessionId = sessionIds.find((/** @type {any} */ id) => String(id).includes('watch')) || sessionIds[0];
-      if (!sessionId) return null;
+      if (!sessionId) {
+        return null;
+      }
       return vp.getVideoPlayerBySessionId(sessionId) || null;
     } catch (_) {
       return null;
@@ -45,8 +49,12 @@
       const start = Date.now();
       const tick = () => {
         const player = getPlayer();
-        if (player) return resolve(player);
-        if (Date.now() - start >= timeoutMs) return resolve(null);
+        if (player) {
+          return resolve(player);
+        }
+        if (Date.now() - start >= timeoutMs) {
+          return resolve(null);
+        }
         setTimeout(tick, 200);
       };
       tick();
@@ -75,14 +83,18 @@
         let ms = Math.max(0, Math.round(sec * 1000));
         if (typeof player.getDuration === 'function') {
           const dur = player.getDuration();
-          if (dur > 0) ms = Math.min(ms, dur);
+          if (dur > 0) {
+            ms = Math.min(ms, dur);
+          }
         }
         return ms;
       };
 
       switch (cmd.action) {
         case 'play':
-          if (typeof cmd.time === 'number') player.seek(toMs(cmd.time));
+          if (typeof cmd.time === 'number') {
+            player.seek(toMs(cmd.time));
+          }
           player.play();
           break;
         case 'pause':
@@ -111,9 +123,13 @@
   }
 
   window.addEventListener('message', (event) => {
-    if (event.source !== window) return;
+    if (event.source !== window) {
+      return;
+    }
     const cmd = event.data;
-    if (!cmd || cmd.__rvs !== 'cmd') return;
+    if (!cmd || cmd.__rvs !== 'cmd') {
+      return;
+    }
     handleCommand(cmd);
   });
 

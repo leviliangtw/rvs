@@ -73,8 +73,12 @@
         return m ? `nf:${m[1]}` : null;
       }
       if (window.RVS.isHost(host, 'youtube.com') || window.RVS.isHost(host, 'youtu.be')) {
-        if (window.RVS.isHost(host, 'youtu.be')) return `yt:${u.pathname.slice(1)}`;
-        if (u.pathname.startsWith('/shorts/')) return `yt:${u.pathname.split('/')[2] || ''}`;
+        if (window.RVS.isHost(host, 'youtu.be')) {
+          return `yt:${u.pathname.slice(1)}`;
+        }
+        if (u.pathname.startsWith('/shorts/')) {
+          return `yt:${u.pathname.split('/')[2] || ''}`;
+        }
         const v = u.searchParams.get('v');
         return v ? `yt:${v}` : null;
       }
@@ -89,10 +93,14 @@
   // blocked during the post-pairing handshake or on unrecognized URLs.
   function isDifferentVideoFromPeer() {
     const { peerMediaInfo } = connectionState.getSnapshot();
-    if (!peerMediaInfo || !peerMediaInfo.url) return false;
+    if (!peerMediaInfo || !peerMediaInfo.url) {
+      return false;
+    }
     const local = getVideoId(location.href);
     const peer = getVideoId(peerMediaInfo.url);
-    if (!local || !peer) return false;
+    if (!local || !peer) {
+      return false;
+    }
     return local !== peer;
   }
 
@@ -112,9 +120,13 @@
       // background is the authoritative room tracker (keyed by tab, not
       // origin) — persist it here too so this origin's sessionStorage is
       // correct even after a cross-origin navigation started it out empty.
-      if (confirmedRoomId) setActiveRoom(confirmedRoomId);
+      if (confirmedRoomId) {
+        setActiveRoom(confirmedRoomId);
+      }
       // Newly paired: tell the peer what we're watching right now (no-op off-site).
-      if (isJustPaired && videoIntegration) videoIntegration.shareMediaInfo(true);
+      if (isJustPaired && videoIntegration) {
+        videoIntegration.shareMediaInfo(true);
+      }
       return;
     }
 
@@ -147,7 +159,9 @@
     // No Video Integration off YouTube/Netflix — nothing to apply the command to.
     // (Ignoring commands while the peer is on a different video is Video
     // Integration's own job now — see video-integration.js's apply().)
-    if (!videoIntegration) return;
+    if (!videoIntegration) {
+      return;
+    }
     videoIntegration.apply(msg);
   }
 
@@ -194,7 +208,9 @@
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === 'CONNECT') {
       connectionState.connect();
-      if (videoIntegration) videoIntegration.forgetSharedMedia();
+      if (videoIntegration) {
+        videoIntegration.forgetSharedMedia();
+      }
       setActiveRoom(msg.roomId); // remember the session so it survives navigation
       setPrefilledRoom(msg.roomId); // keep the popup's suggestion in sync with the room in use
       backgroundPort.send({ action: 'CONNECT', roomId: msg.roomId });
@@ -206,7 +222,9 @@
       clearActiveRoom(); // explicit disconnect: don't auto-rejoin on reload
       backgroundPort.send({ action: 'DISCONNECT' });
       connectionState.disconnect();
-      if (videoIntegration) videoIntegration.forgetSharedMedia();
+      if (videoIntegration) {
+        videoIntegration.forgetSharedMedia();
+      }
       sendResponse({ success: true });
       return;
     }
@@ -214,7 +232,9 @@
     if (msg.action === 'GET_STATUS') {
       // Seed a stable per-tab Room ID once, so reopening the popup shows the
       // same suggested ID instead of generating a new one each time.
-      if (!isRoomPrefilled()) setPrefilledRoom(window.RVS.generateRoomId());
+      if (!isRoomPrefilled()) {
+        setPrefilledRoom(window.RVS.generateRoomId());
+      }
       const snapshot = connectionState.getSnapshot();
       sendResponse({
         status: snapshot.status,

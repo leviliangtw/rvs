@@ -11,7 +11,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Read from the manifest so it never drifts from the shipped version.
   const versionEl = document.getElementById('version');
-  if (versionEl) versionEl.textContent = 'v' + chrome.runtime.getManifest().version;
+  if (versionEl) {
+    versionEl.textContent = 'v' + chrome.runtime.getManifest().version;
+  }
 
   let currentStatus = 'Disconnected';
 
@@ -84,7 +86,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function isSafeMediaUrl(url) {
     try {
       const u = new URL(url);
-      if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') {
+        return false;
+      }
       const host = u.hostname.toLowerCase();
       return window.RVS.isHost(host, 'youtube.com')
         || window.RVS.isHost(host, 'youtu.be')
