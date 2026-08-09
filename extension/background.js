@@ -1,3 +1,10 @@
+/**
+ * @fileoverview The service worker: owns tabStates (tabId → TabSession,
+ * see tab-session.js), accepting new ports from content scripts and
+ * routing their messages into the right session. Also renders the colored
+ * toolbar icon (red/yellow/green) reflecting each tab's connection status.
+ */
+
 importScripts('config.js', 'tab-session.js');
 
 // tabId → TabSession (see tab-session.js). background.js only ever calls

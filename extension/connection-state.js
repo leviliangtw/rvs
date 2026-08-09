@@ -1,13 +1,16 @@
-// connection-state.js — content.js's local mirror of the popup-facing
-// connection status: is this tab connected, how many peers, the round-trip
-// latency, and what the peer is currently watching. Exposed on window.RVS
-// (same convention as players.js) so content.js can reach it without relying
-// on shared lexical scope.
-//
-// Loaded after players.js in the same content-script world (see
-// manifest.json) — merges into window.RVS rather than overwriting it, since
-// both files' factories now coexist here (players.js still assigns directly,
-// since it loads first and window.RVS doesn't exist yet at that point).
+/**
+ * @fileoverview content.js's local mirror of the popup-facing connection
+ * status: is this tab connected, how many peers, the round-trip latency,
+ * and what the peer is currently watching. Exposed on window.RVS (same
+ * convention as players.js) so content.js can reach it without relying on
+ * shared lexical scope.
+ *
+ * Loaded after players.js in the same content-script world (see
+ * manifest.json) — merges into window.RVS rather than overwriting it,
+ * since both files' factories now coexist here (players.js still assigns
+ * directly, since it loads first and window.RVS doesn't exist yet at that
+ * point).
+ */
 
 (() => {
   'use strict';

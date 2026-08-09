@@ -1,11 +1,14 @@
-// players.js — the two write-path adapters, loaded before content.js (same
-// isolated world). Each owns its own anti-feedback lock timing so content.js just
-// calls player.apply(msg) / player.isApplying(). Incoming msg.time already carries
-// latency compensation (stamped in background.js); players only clamp it to the
-// video duration.
-//
-// Exposed on window.RVS rather than relying on cross-script lexical scope, so the
-// coupling to content.js stays explicit (factories receive their deps).
+/**
+ * @fileoverview The two write-path adapters, loaded before content.js
+ * (same isolated world). Each owns its own anti-feedback lock timing so
+ * content.js just calls player.apply(msg) / player.isApplying(). Incoming
+ * msg.time already carries latency compensation (stamped in
+ * background.js); players only clamp it to the video duration.
+ *
+ * Exposed on window.RVS rather than relying on cross-script lexical
+ * scope, so the coupling to content.js stays explicit (factories receive
+ * their deps).
+ */
 
 (() => {
   'use strict';

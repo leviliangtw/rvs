@@ -1,10 +1,12 @@
-// tab-session.js — one tab's connection lifecycle: the WebSocket to the
-// signaling server, the port to that tab's content script, and the
-// room-membership/latency-ping state. Loaded into background.js via
-// importScripts (same convention as config.js), so createTabSession() is a
-// plain global in that shared scope — no window.RVS namespace needed here,
-// since a service worker isn't sharing this scope with any page script the
-// way content scripts do.
+/**
+ * @fileoverview One tab's connection lifecycle: the WebSocket to the
+ * signaling server, the port to that tab's content script, and the
+ * room-membership/latency-ping state. Loaded into background.js via
+ * importScripts (same convention as config.js), so createTabSession() is
+ * a plain global in that shared scope — no window.RVS namespace needed
+ * here, since a service worker isn't sharing this scope with any page
+ * script the way content scripts do.
+ */
 /* exported createTabSession */
 
 // Fragile, undocumented dependency on Chrome's exact disconnect-reason

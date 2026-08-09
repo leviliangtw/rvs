@@ -1,3 +1,10 @@
+/**
+ * @fileoverview The Node.js signaling server: a lightweight WebSocket
+ * relay that routes sync messages between exactly 2 peers per room. Holds
+ * rooms in-memory as a Map<roomId, WebSocket[]> and blindly relays all
+ * non-'join' packets to the other peer.
+ */
+
 const { WebSocketServer } = require('ws');
 
 // Port and Host configuration

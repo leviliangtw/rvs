@@ -1,14 +1,16 @@
-// video-integration.js — the YouTube/Netflix-only half of content.js's job:
-// discovering the <video> element, driving the write-path player, and
-// broadcasting "Now Watching" media info. Loaded before content.js (same
-// isolated world), which only ever calls createVideoIntegration() and holds
-// the single object it returns — never a player or a media-sharing function
-// of its own.
-//
-// Exposed on window.RVS rather than relying on cross-script lexical scope,
-// matching background-port.js/players.js's convention. Merges into
-// window.RVS rather than overwriting it, since several files populate it in
-// this same content-script realm.
+/**
+ * @fileoverview The YouTube/Netflix-only half of content.js's job:
+ * discovering the <video> element, driving the write-path player, and
+ * broadcasting "Now Watching" media info. Loaded before content.js (same
+ * isolated world), which only ever calls createVideoIntegration() and
+ * holds the single object it returns — never a player or a media-sharing
+ * function of its own.
+ *
+ * Exposed on window.RVS rather than relying on cross-script lexical
+ * scope, matching background-port.js/players.js's convention. Merges into
+ * window.RVS rather than overwriting it, since several files populate it
+ * in this same content-script realm.
+ */
 
 (() => {
   'use strict';

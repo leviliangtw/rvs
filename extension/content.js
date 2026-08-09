@@ -1,14 +1,17 @@
-// Injected on <all_urls>, not scoped via host_permissions, so corporate
-// sandbox/DLP policies can't block it entirely. CONNECT/DISCONNECT/GET_STATUS
-// work on any page; isSyncSupported below only gates whether Video
-// Integration (video-integration.js) gets constructed at all.
-//
-// Wrapped in an IIFE — matching every other file in the content-script
-// bundle (players.js, shared-utils.js, connection-state.js,
-// background-port.js, video-integration.js) — so these top-level bindings
-// are file-scoped instead of leaking into the isolated world's shared
-// script scope. content.js is the last file loaded and exports nothing via
-// window.RVS, since nothing in this bundle loads after it.
+/**
+ * @fileoverview Injected on <all_urls>, not scoped via host_permissions,
+ * so corporate sandbox/DLP policies can't block it entirely.
+ * CONNECT/DISCONNECT/GET_STATUS work on any page; isSyncSupported below
+ * only gates whether Video Integration (video-integration.js) gets
+ * constructed at all.
+ *
+ * Wrapped in an IIFE — matching every other file in the content-script
+ * bundle (players.js, shared-utils.js, connection-state.js,
+ * background-port.js, video-integration.js) — so these top-level bindings
+ * are file-scoped instead of leaking into the isolated world's shared
+ * script scope. content.js is the last file loaded and exports nothing via
+ * window.RVS, since nothing in this bundle loads after it.
+ */
 (() => {
   'use strict';
 

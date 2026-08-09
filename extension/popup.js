@@ -1,3 +1,11 @@
+/**
+ * @fileoverview Wires up the popup UI: the Room ID field, Connect/
+ * Disconnect button, and the peer's status/media panel. Talks to the
+ * active tab's content script through the Popup Channel
+ * (popup-channel.js) and never touches chrome.tabs or
+ * chrome.runtime.lastError directly.
+ */
+
 document.addEventListener('DOMContentLoaded', () => {
   const roomIdInput = /** @type {HTMLInputElement} */ (document.getElementById('room-id'));
   const connectBtn = document.getElementById('connect-btn');
