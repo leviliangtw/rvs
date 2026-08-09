@@ -2,17 +2,16 @@
 //
 // Ambient globals for the extension scripts.
 //
-// WS_SERVER_URL is defined in config.js and injected into the service-worker
-// global scope at runtime via importScripts('config.js'). TypeScript does not
-// model importScripts, so under node16 module resolution it can't see the
-// cross-file global — declare it here so background.js type-checks.
+// WS_SERVER_URL is defined in config.js and injected into the service
+// worker's global scope via importScripts('config.js'). TypeScript can't
+// model importScripts, so declare it here for background.js to type-check.
 declare const WS_SERVER_URL: string;
 
-// tab-session.js is loaded into the same service-worker scope the same way
-// (importScripts('tab-session.js')); background.js calls createTabSession —
-// declare it here since TypeScript can't see the cross-file global.
-// updateIcon is passed in by background.js as an explicit dependency (not a
-// bare global tab-session.js reaches for), so it doesn't need declaring here.
+// tab-session.js loads into the same service-worker scope the same way
+// (importScripts('tab-session.js')); declare createTabSession here since
+// TypeScript can't see the cross-file global. updateIcon is an explicit
+// dependency background.js passes in, not a bare global, so it needs no
+// declaration here.
 interface TabSession {
   rebind(port: chrome.runtime.Port): void;
   disconnect(deadPort: chrome.runtime.Port, lastErrorMessage: string | undefined): boolean;
@@ -24,9 +23,9 @@ declare function createTabSession(
   deps: { updateIcon: (tabId: number, status: string) => void }
 ): TabSession;
 
-// players.js builds the write-path player adapters and exposes them on window.RVS
-// so content.js can reach them across content scripts without relying on shared
-// lexical scope. TypeScript doesn't model that cross-file global, so declare it.
+// players.js builds the write-path player adapters and exposes them on
+// window.RVS for content.js to reach across content scripts. TypeScript
+// doesn't model that cross-file global, so declare it.
 interface RvsSyncCommand {
   action: 'play' | 'pause' | 'seek' | 'rate';
   time?: number;
@@ -39,13 +38,12 @@ interface RvsPlayer {
   onVideoReady(): void;
 }
 
-// The command envelope players.js's bridge player (createBridgePlayer, in
-// the isolated content-script world) posts via window.postMessage, and
-// netflix-bridge.js (the MAIN-world bridge) receives. `action`/`time`/`rate`
-// match RvsSyncCommand; __rvs/id are the postMessage envelope on top of
-// that. Unlike every other interface in this file, this isn't shared via
-// window.RVS — the two realms don't share one — it's shared purely as a
-// compile-time contract both sides must agree on independently.
+// The command envelope players.js's bridge player posts via
+// window.postMessage and netflix-bridge.js (MAIN-world) receives.
+// `action`/`time`/`rate` match RvsSyncCommand; __rvs/id are the
+// postMessage envelope on top. Unlike other interfaces here, this isn't
+// shared via window.RVS (the two realms don't share one) — it's a
+// compile-time contract both sides agree on independently.
 interface RvsBridgeCommand {
   __rvs: 'cmd';
   id: number;
@@ -54,17 +52,13 @@ interface RvsBridgeCommand {
   rate?: number;
 }
 
-// popup-channel.js and shared-utils.js populate window.RVS in the popup
-// realm; players.js, shared-utils.js, connection-state.js, and
-// background-port.js populate it in the content-script realm. Every one of
-// these merges into window.RVS (`window.RVS = { ...window.RVS, x }`) rather
-// than overwriting it, so none of them depend on load order to avoid wiping
-// out what another already set. shared-utils.js is loaded into both realms
-// (see manifest.json and popup.html) but each realm gets its own
-// window.RVS, so this shares source, not runtime state. The popup realm
-// never coexists with the content-script realm, but multiple files
-// populate window.RVS within each one, hence every member here being
-// optional rather than assuming exactly one factory is ever present.
+// Multiple files populate window.RVS in each realm (popup: popup-channel.js
+// + shared-utils.js; content script: players.js, shared-utils.js,
+// connection-state.js, background-port.js), each merging in
+// (`window.RVS = { ...window.RVS, x }`) rather than overwriting, so none
+// depend on load order. shared-utils.js loads into both realms but each
+// gets its own window.RVS, so this shares source, not runtime state —
+// hence every member below being optional, not assuming one factory only.
 interface RvsPopupChannel {
   send(msg: object, callback: (response: any) => void): void;
   watchStatus(callback: (response: any) => void): () => void;
@@ -96,10 +90,9 @@ interface RvsBackgroundPort {
 }
 
 // video-integration.js's deep module: the YouTube/Netflix-only half of
-// content.js's job (the <video> element, the write-path player, and the
-// "Now Watching" broadcaster) behind one seam. content.js decides whether
-// to construct one at all (see ADR-0001) and holds exactly this interface —
-// never a player or a media-sharing function of its own.
+// content.js's job (the <video> element, write-path player, "Now
+// Watching" broadcaster) behind one seam. Only constructed when
+// isSyncSupported (ADR-0001); content.js holds exactly this interface.
 interface RvsVideoIntegration {
   apply(msg: RvsSyncCommand): void;
   shareMediaInfo(force: boolean): void;

@@ -1,27 +1,23 @@
 /**
- * @fileoverview Runs in the page's MAIN world (see manifest "world":
- * "MAIN").
+ * @fileoverview Runs in the page's MAIN world (manifest "world": "MAIN").
  *
  * Netflix's player owns the <video> element through an internal state
- * machine. Writing video.currentTime / .play() / .pause() directly from a
- * content script triggers Netflix tamper detection (error M7375) and
- * tears down the player.
+ * machine — writing video.currentTime/.play()/.pause() directly triggers
+ * tamper detection (error M7375) and tears the player down.
  *
  * This bridge instead drives playback through Netflix's official internal
- * player API — the same approach Teleparty uses. It lives in the MAIN
- * world because the API hangs off window.netflix, which is invisible to
- * the isolated content script. Commands arrive via window.postMessage
- * from content.js; results are acked back.
+ * player API (the same approach Teleparty uses), reachable only from the
+ * MAIN world since it hangs off window.netflix. Commands arrive via
+ * window.postMessage from content.js; results are acked back.
  */
 
 (() => {
   'use strict';
 
-  // Injected on <all_urls> (see manifest — no host_permissions, so corporate
-  // sandbox/DLP policies blocking an explicit netflix.com host grant don't stop
-  // the bridge from loading at all); this hostname check is what actually
-  // confines it to Netflix, so it must not be a loose substring match — that
-  // would also fire on e.g. "netflix.com.evil.example".
+  // Injected on <all_urls> (no host_permissions, so DLP/sandbox policies
+  // can't block it from loading); this hostname check is what actually
+  // confines it to Netflix, so it must be exact/subdomain, not a loose
+  // substring match — that would also fire on "netflix.com.evil.example".
   const hostname = window.location.hostname;
   const isNetflix = hostname === 'netflix.com' || hostname.endsWith('.netflix.com');
   if (!isNetflix) {

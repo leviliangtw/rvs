@@ -1,16 +1,9 @@
 /**
- * @fileoverview Injected on <all_urls>, not scoped via host_permissions,
- * so corporate sandbox/DLP policies can't block it entirely.
- * CONNECT/DISCONNECT/GET_STATUS work on any page; isSyncSupported below
- * only gates whether Video Integration (video-integration.js) gets
- * constructed at all.
- *
- * Wrapped in an IIFE — matching every other file in the content-script
- * bundle (players.js, shared-utils.js, connection-state.js,
- * background-port.js, video-integration.js) — so these top-level bindings
- * are file-scoped instead of leaking into the isolated world's shared
- * script scope. content.js is the last file loaded and exports nothing via
- * window.RVS, since nothing in this bundle loads after it.
+ * @fileoverview Injected on <all_urls> (no host_permissions, so DLP/sandbox
+ * policies can't block it). CONNECT/DISCONNECT/GET_STATUS work on any page;
+ * isSyncSupported below gates whether Video Integration gets constructed.
+ * IIFE-wrapped like the rest of the content-script bundle; loads last, so
+ * it exports nothing via window.RVS.
  */
 (() => {
   'use strict';
@@ -91,9 +84,9 @@
     }
   }
 
-  // True only when we can confirm the peer is on a different video. Unknown
-  // (no peer media yet, or an unparseable URL) returns false, so sync isn't
-  // blocked during the post-pairing handshake or on unrecognized URLs.
+  // True only when we can confirm the peer is on a different video; unknown
+  // cases (no peer media yet, unparseable URL) return false so sync isn't
+  // blocked unnecessarily.
   function isDifferentVideoFromPeer() {
     const { peerMediaInfo } = connectionState.getSnapshot();
     if (!peerMediaInfo || !peerMediaInfo.url) {
@@ -107,11 +100,10 @@
     return local !== peer;
   }
 
-  // Deliberately untyped (`any`), matching background-port.js's
-  // RvsBackgroundPort.onMessage and tab-session.js's handlePortMessage: the
-  // packet shape genuinely varies by action (state/error/media_info/sync
-  // commands), validated below via the action field rather than statically
-  // discriminated.
+  // Deliberately untyped (`any`): the packet shape varies by action
+  // (state/error/media_info/sync commands), validated below via the
+  // action field rather than statically discriminated. Matches
+  // background-port.js and tab-session.js's same-shaped handlers.
   /** @param {any} msg */
   function handleBackgroundMessage(msg) {
     const { action } = msg;
@@ -152,9 +144,9 @@
 
     if (action === 'error') {
       connectionState.handleError();
-      // Connection-level failures (e.g. server unavailable) disconnect silently
-      // and keep the session so a reload can retry; actionable server errors
-      // (room full, invalid room) surface to the user and stop auto-rejoin.
+      // Connection-level failures (e.g. server unavailable) disconnect
+      // silently so a reload can retry; actionable server errors (room
+      // full, invalid room) surface to the user and stop auto-rejoin.
       if (msg.silent) {
         console.warn(`[RVS] ${msg.message}`);
       } else {
@@ -164,9 +156,9 @@
       return;
     }
 
-    // No Video Integration off YouTube/Netflix — nothing to apply the command to.
-    // (Ignoring commands while the peer is on a different video is Video
-    // Integration's own job now — see video-integration.js's apply().)
+    // Off YouTube/Netflix there's no Video Integration to apply the command
+    // to. (Skipping commands while the peer is on a different video is
+    // apply()'s own job now — see video-integration.js.)
     if (!videoIntegration) {
       return;
     }
@@ -174,9 +166,9 @@
   }
 
   // Opened on every page, not just YouTube/Netflix, so a room can be
-  // joined/left/queried from any tab. Registered immediately, before Video
-  // Integration below — so the status sync background sends the moment a
-  // connection goes live can't be missed.
+  // joined/left/queried from any tab. Registered before Video Integration
+  // below, so the status sync sent the moment a connection goes live
+  // can't be missed.
   const backgroundPort = window.RVS.createBackgroundPort({
     onMessage: handleBackgroundMessage,
 
@@ -194,13 +186,10 @@
 
   console.log('[RVS] Content script injected.');
 
-  // Video Integration (video-integration.js) is content.js's YouTube/Netflix-
-  // only half — the <video> element, the write-path player, and the "Now
-  // Watching" broadcaster all live behind this one seam. content.js decides
-  // whether it exists at all (matching ADR-0001: room connection stays
-  // host-agnostic; only the sync integration is site-gated) and holds exactly
-  // one nullable reference to what it returns — never a player or a
-  // media-sharing function of its own.
+  // video-integration.js is content.js's YouTube/Netflix-only half (the
+  // <video> element, write-path player, "Now Watching" broadcaster). Only
+  // constructed when isSyncSupported (ADR-0001: room connection stays
+  // host-agnostic); content.js holds exactly this one nullable reference.
   /** @type {RvsVideoIntegration | null} */
   const videoIntegration = isSyncSupported
     ? window.RVS.createVideoIntegration({

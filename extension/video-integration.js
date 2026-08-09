@@ -2,22 +2,19 @@
  * @fileoverview The YouTube/Netflix-only half of content.js's job:
  * discovering the <video> element, driving the write-path player, and
  * broadcasting "Now Watching" media info. Loaded before content.js (same
- * isolated world), which only ever calls createVideoIntegration() and
- * holds the single object it returns — never a player or a media-sharing
- * function of its own.
+ * isolated world), which only calls createVideoIntegration() and holds
+ * the single object it returns.
  *
- * Exposed on window.RVS rather than relying on cross-script lexical
- * scope, matching background-port.js/players.js's convention. Merges into
- * window.RVS rather than overwriting it, since several files populate it
- * in this same content-script realm.
+ * Exposed on window.RVS (matching background-port.js/players.js), merged
+ * in rather than overwritten since other files populate it too.
  */
 
 (() => {
   'use strict';
 
-  // deps are narrowed to exactly what this module needs — never the whole
-  // connectionState/backgroundPort objects content.js holds — so a test can
-  // substitute each with a bare stub.
+  // deps are narrowed to exactly what this module needs, not the whole
+  // connectionState/backgroundPort objects content.js holds, so each can
+  // be stubbed independently.
   /**
    * @param {{
    *   isNetflix: boolean,
@@ -64,15 +61,14 @@
     let videoElement = null;
     let isReadListenersAttached = false;
 
-    // content.js's own broadcast-dedup cache (the last { url, title } we
-    // shared) — private to shareMediaInfo below, reset via
-    // forgetSharedMedia() rather than a caller reaching in directly.
+    // Broadcast-dedup cache (the last { url, title } shared) — private to
+    // shareMediaInfo below, reset via forgetSharedMedia().
     /** @type {{ url: string, title: string } | null} */
     let lastSentMediaInfo = null;
 
-    // The write path is fully encapsulated per site (see players.js): YouTube
-    // writes the <video> directly; Netflix drives the official player API
-    // through the main-world bridge (direct writes there trigger error M7375).
+    // Write path is fully encapsulated per site (see players.js): YouTube
+    // writes the <video> directly; Netflix drives the official API via the
+    // main-world bridge (direct writes there trigger error M7375).
     const player = isNetflix
       ? window.RVS.createBridgePlayer()
       : window.RVS.createDirectPlayer({ getVideo: ensureBoundVideo });
@@ -147,22 +143,21 @@
       player.onVideoReady();
     }
 
-    // Re-discover when the SPA adds OR swaps the <video> element. Netflix
-    // replaces the element on an episode change; staying bound to the old
-    // (detached) one left READ listeners firing on a dead element, so local
-    // actions stopped broadcasting. Resets isReadListenersAttached alongside
-    // videoElement, or attachReadListeners() would see stale listeners as
-    // already attached and skip attaching them to the new element.
+    // Re-discover when the SPA adds or swaps the <video> element (Netflix
+    // replaces it on episode change) — staying bound to a detached element
+    // left READ listeners firing on nothing. Resets isReadListenersAttached
+    // too, or attachReadListeners() would see stale listeners as already
+    // attached and skip the new element.
     function rediscoverVideo() {
       isReadListenersAttached = false;
       videoElement = null;
       discoverVideo();
     }
 
-    // Backs the direct (YouTube) player: returns the bound <video>,
-    // re-discovering it if the SPA swapped the element out, or null if none
-    // exists yet. Injected into createDirectPlayer so the player file has no
-    // implicit dependency on this state.
+    // Backs the direct (YouTube) player: returns the bound <video>
+    // (re-discovering it if the SPA swapped it out), or null if none
+    // exists yet. Injected into createDirectPlayer to avoid an implicit
+    // dependency on this module's state.
     function ensureBoundVideo() {
       if (videoElement && !videoElement.isConnected) {
         rediscoverVideo();
@@ -170,13 +165,11 @@
       return videoElement || document.querySelector('video');
     }
 
-    // Broadcast the local video to the peer. Guarded so we only emit when
-    // paired; the background also drops media_info unless two peers are
-    // present. Pass force=true to re-send even if nothing changed (e.g. just
-    // after pairing). A plain function declaration (not assigned into a
-    // pre-declared outer variable), since it's local to this module now —
-    // hoisting means discoverVideo() above can already call it regardless of
-    // textual order.
+    // Broadcast the local video to the peer, guarded to only emit when
+    // paired (background also drops media_info unless two peers are
+    // present). force=true re-sends even if nothing changed (e.g. right
+    // after pairing). Plain function declaration, not const — hoisting
+    // lets discoverVideo() above call it regardless of textual order.
     /** @param {boolean} force */
     function shareMediaInfo(force) {
       const { status, peersCount } = getSnapshot();
@@ -187,11 +180,11 @@
       if (!media) {
         return;
       }
-      // De-dupe on title *and* url, not url alone: on a Netflix episode change the
-      // new title isn't in the DOM yet when we first fire (getTitle() falls back
-      // to "Netflix"), so keying on url alone would latch that stale title until
-      // the next navigation. The periodic re-share below corrects it once the
-      // real title settles (same url, changed title).
+      // De-dupe on title *and* url, not url alone: right after a Netflix
+      // episode change the title isn't in the DOM yet (getTitle() falls
+      // back to "Netflix"), so url-only keying would latch that stale
+      // title. The periodic re-share below corrects it once the title
+      // settles.
       const isUnchanged = lastSentMediaInfo
         && lastSentMediaInfo.url === media.url
         && lastSentMediaInfo.title === media.title;
@@ -220,9 +213,8 @@
     videoObserver.observe(document.documentElement, { childList: true, subtree: true });
 
     return {
-      // Ignoring remote playback commands while the peer is on a different
-      // video lives here, not in the caller — applying a command correctly
-      // always means checking this first, so content.js doesn't need to
+      // Ignoring remote commands while the peer is on a different video
+      // lives here, not in the caller, so content.js never needs to
       // remember the rule.
       /** @param {RvsSyncCommand} msg */
       apply(msg) {

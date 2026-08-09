@@ -1,22 +1,19 @@
 /**
  * @fileoverview content.js's local mirror of the popup-facing connection
  * status: is this tab connected, how many peers, the round-trip latency,
- * and what the peer is currently watching. Exposed on window.RVS (same
- * convention as players.js) so content.js can reach it without relying on
- * shared lexical scope.
+ * and what the peer is currently watching. Exposed on window.RVS (like
+ * players.js) so content.js can reach it without shared lexical scope.
  *
- * Loaded after players.js in the same content-script world (see
- * manifest.json) — merges into window.RVS rather than overwriting it,
- * since both files' factories now coexist here (players.js still assigns
- * directly, since it loads first and window.RVS doesn't exist yet at that
- * point).
+ * Loaded after players.js in the same content-script world — merges into
+ * window.RVS rather than overwriting it, since both files' factories now
+ * coexist here.
  */
 
 (() => {
   'use strict';
 
-  // Doesn't own the port, the room-join request, or sessionStorage — those
-  // stay content.js's job. This is purely the state machine for "what should
+  // Doesn't own the port, the room-join request, or sessionStorage (those
+  // stay content.js's job) — purely the state machine for "what should
   // GET_STATUS report right now," driven by messages content.js hands it.
   /** @returns {RvsConnectionState} */
   function createConnectionState() {
@@ -47,14 +44,10 @@
       handleError: resetToDisconnected,
 
       // 'state' message from background, narrowed to just the fields this
-      // module needs (not the whole wire packet — `reported`-prefixed to
-      // stay distinct from this module's own status/peersCount, since
-      // shadowing those with same-named params would silently write to the
-      // param instead of the module's state). Returns the confirmed roomId
-      // to persist (or null — only set on an actual 'connected' transition,
-      // matching what this replaced) and whether this transition just
-      // completed pairing — this module doesn't touch sessionStorage or the
-      // player itself, the caller decides what to do with those.
+      // module needs (`reported`-prefixed to avoid shadowing this module's
+      // own status/peersCount). Returns the confirmed roomId to persist
+      // (null unless this is an actual 'connected' transition) and whether
+      // pairing just completed — the caller decides what to do with those.
       handleState({ status: reportedStatus, peersCount: reportedPeersCount, roomId: reportedRoomId }) {
         peersCount = reportedPeersCount;
         let confirmedRoomId = null;

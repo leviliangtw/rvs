@@ -1,13 +1,12 @@
 /**
  * @fileoverview The two write-path adapters, loaded before content.js
- * (same isolated world). Each owns its own anti-feedback lock timing so
+ * (same isolated world). Each owns its anti-feedback lock timing so
  * content.js just calls player.apply(msg) / player.isApplying(). Incoming
  * msg.time already carries latency compensation (stamped in
  * background.js); players only clamp it to the video duration.
  *
- * Exposed on window.RVS rather than relying on cross-script lexical
- * scope, so the coupling to content.js stays explicit (factories receive
- * their deps).
+ * Exposed on window.RVS so the coupling to content.js stays explicit
+ * (factories receive their deps).
  */
 
 (() => {
@@ -95,10 +94,10 @@
     return { apply, isApplying: () => isApplying, onVideoReady };
   }
 
-  // Netflix: never touch the <video> (triggers M7375). Drive the official player
-  // API via the main-world bridge — postMessage out and ack back. No video deps,
-  // since the write path doesn't read the element and never parks (the bridge
-  // waits for the player itself).
+  // Netflix: never touch the <video> (triggers M7375) — drive the official
+  // player API via the main-world bridge (postMessage out, ack back). No
+  // video deps: the write path never reads the element or parks (the
+  // bridge waits for the player itself).
   /** @returns {RvsPlayer} */
   function createBridgePlayer() {
     let isApplying = false;

@@ -7,10 +7,9 @@
 
 importScripts('config.js', 'tab-session.js');
 
-// tabId → TabSession (see tab-session.js). background.js only ever calls
-// into a session's public interface (rebind/disconnect/handlePortMessage/
-// getStatus) — it never touches a session's WebSocket, port, or room state
-// directly.
+// tabId → TabSession (see tab-session.js). background.js only calls into
+// a session's public interface (rebind/disconnect/handlePortMessage/
+// getStatus) — never its WebSocket, port, or room state directly.
 const tabStates = new Map();
 
 // Content scripts connect here; the open port keeps the service worker alive.
@@ -38,12 +37,11 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
-// Repaint the icon to match this tab's real connection state when it navigates
-// or reloads. A SPA soft navigation (e.g. YouTube video -> home and back) fires
-// 'loading' but doesn't drop the port/socket, so the connection is still alive;
-// painting an unconditional red here made the icon lie and stay red. A real
-// reload has no live state yet (the port disconnected), so it correctly shows
-// Disconnected until the session resumes.
+// Repaint the icon to match this tab's real connection state on navigation
+// or reload. A SPA soft navigation (e.g. YouTube video -> home and back)
+// fires 'loading' without dropping the port/socket, so painting an
+// unconditional red here made the icon lie; a real reload has no live
+// session yet, so it correctly shows Disconnected until one resumes.
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === 'loading') {
     const session = tabStates.get(tabId);
