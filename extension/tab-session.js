@@ -63,6 +63,8 @@ function createTabSession(tabId, { updateIcon }) {
   /** @param {any} msg */
   function sendToPort(msg) {
     if (!port) return;
+    // port may disconnect between the check above and this call — the
+    // onDisconnect listener handles cleanup separately, nothing to do here.
     try { port.postMessage(msg); } catch (_) {}
   }
 
