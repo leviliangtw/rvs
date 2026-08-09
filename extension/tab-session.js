@@ -62,7 +62,9 @@ function createTabSession(tabId, { updateIcon }) {
   // discriminated here.
   /** @param {any} msg */
   function sendToPort(msg) {
-    if (!port) return;
+    if (!port) {
+      return;
+    }
     // port may disconnect between the check above and this call — the
     // onDisconnect listener handles cleanup separately, nothing to do here.
     try { port.postMessage(msg); } catch (_) {}
@@ -116,7 +118,9 @@ function createTabSession(tabId, { updateIcon }) {
         if (msg.status === 'connected') {
           status = 'Connected';
           updateIcon(tabId, 'Connected');
-          if (peersCount === 2) startLatencyPings();
+          if (peersCount === 2) {
+            startLatencyPings();
+          }
         } else if (msg.status === 'peer_disconnected') {
           peersCount = 1;
           stopLatencyPings();
@@ -218,7 +222,9 @@ function createTabSession(tabId, { updateIcon }) {
     port = newPort;
     if (status === 'Connected') {
       sendToPort({ action: 'state', status: 'connected', peersCount, roomId });
-      if (oneWayLatency) sendToPort({ action: 'latency_update', latency: oneWayLatency });
+      if (oneWayLatency) {
+        sendToPort({ action: 'latency_update', latency: oneWayLatency });
+      }
     }
   }
 
@@ -248,7 +254,9 @@ function createTabSession(tabId, { updateIcon }) {
 
     console.log(`[RVS] tab=${tabId} disconnect stale=${isStale} bfcache=${isBfcache} status=${status} roomId=${roomId}`);
 
-    if (isStale || isBfcache) return false;
+    if (isStale || isBfcache) {
+      return false;
+    }
 
     cleanupSocket();
     return true;

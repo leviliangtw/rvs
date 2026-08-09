@@ -32,7 +32,9 @@
 
     /** @param {object} msg */
     function send(msg) {
-      if (!port) return;
+      if (!port) {
+        return;
+      }
       try {
         port.postMessage(msg);
       } catch (err) {
@@ -70,7 +72,9 @@
     // becomes interactive again, rather than waiting for the next send()
     // to discover it the hard way.
     window.addEventListener('pageshow', (event) => {
-      if (event.persisted) connect();
+      if (event.persisted) {
+        connect();
+      }
     });
 
     return { send };

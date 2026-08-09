@@ -107,7 +107,9 @@ wss.on('connection', (ws) => {
  * @param {string | null} roomId
  */
 function leaveRoom(ws, roomId) {
-  if (!roomId || !rooms.has(roomId)) return;
+  if (!roomId || !rooms.has(roomId)) {
+    return;
+  }
 
   let clientList = rooms.get(roomId);
   clientList = clientList.filter((client) => client !== ws);
