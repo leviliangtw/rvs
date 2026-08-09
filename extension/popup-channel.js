@@ -1,16 +1,12 @@
 /**
  * @fileoverview The popup's transport to the active tab's content script.
- * Loaded before popup.js (same convention as players.js -> content.js):
- * an IIFE exposing a factory on window.RVS, so popup.js only ever sees
- * send()/watchStatus() and never chrome.tabs.query/sendMessage or the
+ * Loaded before popup.js (like players.js -> content.js): an IIFE
+ * exposing a factory on window.RVS, so popup.js only ever sees
+ * send()/watchStatus(), never chrome.tabs.query/sendMessage or the
  * lastError-means-unsupported-page check directly.
  *
- * Exposed on window.RVS rather than relying on cross-script lexical
- * scope, so the coupling to popup.js stays explicit, matching players.js's
- * convention. Merges into window.RVS (matching shared-utils.js) rather
- * than overwriting it, since both files populate window.RVS in this same
- * popup realm and neither should depend on load order to avoid wiping out
- * what the other already set.
+ * Merges into window.RVS (matching shared-utils.js) rather than
+ * overwriting it, since both files populate it in this same popup realm.
  */
 
 (() => {
@@ -20,9 +16,9 @@
 
   /** @returns {RvsPopupChannel} */
   function createPopupChannel() {
-    // Send one message to the active tab's content script. Normalizes "no active
-    // tab" and "no content script there" (chrome.runtime.lastError) to a single
-    // callback(null), so callers never touch chrome.tabs or lastError themselves.
+    // Send one message to the active tab's content script. Normalizes "no
+    // active tab" and "no content script there" (chrome.runtime.lastError)
+    // to a single callback(null), so callers never touch either directly.
     /**
      * @param {object} msg
      * @param {(response: any) => void} callback

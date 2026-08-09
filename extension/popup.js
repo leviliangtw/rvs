@@ -25,22 +25,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentStatus = 'Disconnected';
 
-  // True once the Room ID field has received a real value (from content.js)
-  // or a direct user edit (typing, Regenerate, Paste) — after that, this
-  // popup-open session never programmatically touches the field again, no
-  // matter what the field holds. Without this, clearing the field to type a
-  // new ID left a window where the field was momentarily empty; the 1s
-  // status poll saw that as "safe to prefill" and put the old value back,
-  // fighting the user's own edit.
+  // True once the Room ID field has a real value (from content.js) or a
+  // direct user edit (typing, Regenerate, Paste) — after that this popup
+  // session never programmatically touches the field again. Without this,
+  // clearing the field to type a new ID left a brief window where the 1s
+  // status poll saw "empty" as safe to prefill and fought the user's edit.
   //
-  // While still unlocked, the field holds either nothing or a locally
-  // generated placeholder (from updateUIForUnsupportedPage) — never a real
-  // value, since receiving one locks the field immediately. That's what lets
-  // the watchStatus guard below check just isRoomIdLocked: a transient
-  // content-script hiccup right after a real navigation can trigger
-  // "Unsupported Page" for a single poll tick before the fresh content
-  // script finishes loading, and this way the real Room ID that follows can
-  // still land once it arrives.
+  // While unlocked, the field holds only nothing or a local placeholder
+  // (never a real value — receiving one locks it immediately), which is
+  // why the watchStatus guard below can check just isRoomIdLocked: a
+  // transient "Unsupported Page" hiccup right after navigation won't
+  // block the real Room ID from landing once it arrives.
   let isRoomIdLocked = false;
 
   // See popup-channel.js — hides chrome.tabs.query/sendMessage and
@@ -63,15 +58,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Applies a connection status to the status readout and the Connect/
-  // Disconnect button label — the single place that decides what each status
-  // looks like, so the four call sites (two optimistic updates sent before
-  // the next poll confirms, the poll itself, and the unsupported-page
-  // fallback) can never independently disagree on shape again. They briefly
-  // did: CONNECT's optimistic update hardcoded 'Connecting...', but the poll
-  // wrote the raw 'Connecting' a moment later, flickering. textOverride
-  // covers the one legitimate case where the displayed text differs from the
-  // status driving currentStatus/the button label ('Unsupported Page' shows
-  // while currentStatus is still 'Disconnected').
+  // Disconnect button label — the single place that decides what each
+  // status looks like, so its call sites can never disagree on shape again
+  // (they briefly did: an optimistic 'Connecting...' flickered against the
+  // poll's raw 'Connecting' a moment later). textOverride covers the one
+  // legitimate mismatch: 'Unsupported Page' displays while currentStatus
+  // stays 'Disconnected'.
   /**
    * @param {string} status
    * @param {string} [textOverride]
@@ -87,9 +79,9 @@ document.addEventListener('DOMContentLoaded', () => {
     connectBtn.textContent = (status === 'Connected' || status === 'Connecting') ? 'Disconnect' : 'Connect';
   }
 
-  // Only http(s) URLs on YouTube/Netflix become clickable links. The peer's URL
-  // is untrusted, so this blocks javascript:/data: and other schemes that would
-  // otherwise execute in the popup when clicked.
+  // Only http(s) URLs on YouTube/Netflix become clickable links — the
+  // peer's URL is untrusted, so this blocks javascript:/data: and other
+  // schemes that would otherwise execute in the popup when clicked.
   /** @param {string} url */
   function isSafeMediaUrl(url) {
     try {
@@ -106,9 +98,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Render a media entry into `el` as a hyperlink (or plain text if the URL isn't
-  // a trusted, clickable one). Built with createElement/textContent — never
-  // innerHTML — so a malicious title/URL can't inject markup.
+  // Render a media entry into `el` as a hyperlink (or plain text if the URL
+  // isn't trusted/clickable). Built with createElement/textContent, never
+  // innerHTML, so a malicious title/URL can't inject markup.
   /**
    * @param {HTMLElement} el
    * @param {{ title: string, url: string } | null} media
@@ -142,10 +134,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateUIForUnsupportedPage() {
-    // Unsupported pages have no content script to provide/persist an ID, so
-    // seed one locally when the field is empty. Deliberately doesn't lock the
-    // field: a genuine roomId (e.g. once a fresh content script finishes
-    // loading after a real navigation) can still replace this placeholder.
+    // Unsupported pages have no content script to persist an ID, so seed
+    // one locally when the field is empty. Deliberately doesn't lock the
+    // field, so a genuine roomId (once a real content script loads) can
+    // still replace this placeholder.
     if (!isRoomIdLocked && !roomIdInput.value) {
       roomIdInput.value = window.RVS.generateRoomId();
     }
