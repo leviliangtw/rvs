@@ -213,7 +213,7 @@
 
   // Popup messages (CONNECT/DISCONNECT/GET_STATUS) — always registered so a
   // room can be joined/left/queried from any tab, not just YouTube/Netflix.
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.action === 'CONNECT') {
       connectionState.connect();
       if (videoIntegration) {
