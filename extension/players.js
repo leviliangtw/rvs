@@ -20,7 +20,7 @@
    * @param {{ getVideo: () => HTMLVideoElement | null }} deps
    * @returns {RvsPlayer}
    */
-  const createDirectPlayer = ({ getVideo }) => {
+  function createDirectPlayer({ getVideo }) {
     let isApplying = false;
     /** @type {ReturnType<typeof setTimeout> | null} */
     let resetTimer = null;
@@ -93,14 +93,14 @@
     }
 
     return { apply, isApplying: () => isApplying, onVideoReady };
-  };
+  }
 
   // Netflix: never touch the <video> (triggers M7375). Drive the official player
   // API via the main-world bridge — postMessage out and ack back. No video deps,
   // since the write path doesn't read the element and never parks (the bridge
   // waits for the player itself).
   /** @returns {RvsPlayer} */
-  const createBridgePlayer = () => {
+  function createBridgePlayer() {
     let isApplying = false;
     /** @type {ReturnType<typeof setTimeout> | null} */
     let resetTimer = null;
@@ -146,7 +146,7 @@
     }
 
     return { apply, isApplying: () => isApplying, onVideoReady() {} };
-  };
+  }
 
   window.RVS = { createDirectPlayer, createBridgePlayer };
 })();
