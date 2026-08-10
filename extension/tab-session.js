@@ -43,6 +43,13 @@ function createTabSession(tabId, { updateIcon }) {
   let oneWayLatency = 0;
   /** @type {ReturnType<typeof setInterval> | null} */
   let pingInterval = null;
+  // Set by requestPeerSync() when it can't send immediately (the socket for
+  // a freshly (re)created session isn't open yet at rebind time — it only
+  // opens once handlePortMessage's CONNECT arrives, which is asynchronous
+  // relative to rebind()). Consumed the moment handleServerMessage's own
+  // 'state'/'connected'+2-peers confirmation arrives, since that's the
+  // first point a send is actually guaranteed to succeed.
+  let pendingPeerSyncRequest = false;
 
   // The WebSocket lifecycle and latency-ping loop aren't independent
   // (cleanupSocket stops pings; handleServerMessage starts/stops them),
@@ -112,6 +119,11 @@ function createTabSession(tabId, { updateIcon }) {
           updateIcon(tabId, 'Connected');
           if (peersCount === 2) {
             startLatencyPings();
+            if (pendingPeerSyncRequest) {
+              pendingPeerSyncRequest = false;
+              console.log(`[RVS] tab=${tabId} sending deferred request_sync now that peersCount=2`);
+              socket.send(JSON.stringify({ action: 'request_sync' }));
+            }
           }
         } else if (msg.status === 'peer_disconnected') {
           peersCount = 1;
@@ -146,6 +158,7 @@ function createTabSession(tabId, { updateIcon }) {
       if ((action === 'play' || action === 'seek') && typeof msg.time === 'number') {
         msg.time += oneWayLatency / 1000;
       }
+      console.log(`[RVS] tab=${tabId} handleServerMessage forwarding to port action=${action} hasPort=${!!port}`);
       sendToPort(msg);
 
     } catch (err) {
@@ -267,7 +280,9 @@ function createTabSession(tabId, { updateIcon }) {
     }
 
     // Forward video events (play/pause/seek/rate) to server
-    if (socket && socket.readyState === WebSocket.OPEN && peersCount === 2) {
+    const canForward = !!(socket && socket.readyState === WebSocket.OPEN && peersCount === 2);
+    console.log(`[RVS] tab=${tabId} handlePortMessage forwarding action=${msg.action} canForward=${canForward} peersCount=${peersCount}`);
+    if (canForward) {
       socket.send(JSON.stringify(msg));
     }
   }
@@ -276,5 +291,30 @@ function createTabSession(tabId, { updateIcon }) {
     return status;
   }
 
-  return { rebind, disconnect, handlePortMessage, getStatus };
+  // Backs Join Peer's "different video" branch (see CLAUDE.md): called by
+  // background.js right after rebind(), for a port whose content.js sent
+  // JOIN_PEER_PENDING before navigating. Deliberately a public method
+  // rather than a message this session tracks itself — background.js's
+  // pendingPeerSyncTabIds Set is what actually survives the navigation
+  // (this session's own in-memory state does not: a real, non-bfcache
+  // disconnect tears it down and a fresh session gets created in its
+  // place, same as any other in-memory field here would be lost too).
+  //
+  // A freshly (re)created session has no socket yet at this exact point —
+  // openWebSocket() only runs once handlePortMessage's CONNECT arrives,
+  // which is a separate, later message than the rebind this is called
+  // from. So this can't just check-and-send once: if the socket isn't
+  // ready, it defers to pendingPeerSyncRequest above instead of dropping
+  // the request on the floor.
+  function requestPeerSync() {
+    const canSend = !!(socket && socket.readyState === WebSocket.OPEN && peersCount === 2);
+    console.log(`[RVS] tab=${tabId} requestPeerSync canSend=${canSend} socketState=${socket && socket.readyState} peersCount=${peersCount}`);
+    if (canSend) {
+      socket.send(JSON.stringify({ action: 'request_sync' }));
+    } else {
+      pendingPeerSyncRequest = true;
+    }
+  }
+
+  return { rebind, disconnect, handlePortMessage, requestPeerSync, getStatus };
 }

@@ -9,8 +9,18 @@ importScripts('config.js', 'tab-session.js');
 
 // tabId → TabSession (see tab-session.js). background.js only calls into
 // a session's public interface (rebind/disconnect/handlePortMessage/
-// getStatus) — never its WebSocket, port, or room state directly.
+// requestPeerSync/getStatus) — never its WebSocket, port, or room state
+// directly.
 const tabStates = new Map();
+
+// tabIds with a JOIN_PEER_PENDING still waiting for their next rebind (see
+// Join Peer in CLAUDE.md). Deliberately module-level, not inside any one
+// TabSession: a real (non-bfcache) disconnect deletes that session and a
+// fresh one takes its place on the next connect, which would silently lose
+// anything stored in the old session's own in-memory state — this Set
+// survives that exact case since it isn't tied to any one session's
+// lifetime.
+const pendingPeerSyncTabIds = new Set();
 
 // Content scripts connect here; the open port keeps the service worker alive.
 chrome.runtime.onConnect.addListener((port) => {
@@ -28,7 +38,18 @@ chrome.runtime.onConnect.addListener((port) => {
 
   session.rebind(port);
 
-  port.onMessage.addListener((msg) => session.handlePortMessage(msg));
+  if (pendingPeerSyncTabIds.has(tabId)) {
+    pendingPeerSyncTabIds.delete(tabId);
+    session.requestPeerSync();
+  }
+
+  port.onMessage.addListener((msg) => {
+    if (msg.action === 'JOIN_PEER_PENDING') {
+      pendingPeerSyncTabIds.add(tabId);
+      return;
+    }
+    session.handlePortMessage(msg);
+  });
   port.onDisconnect.addListener(() => {
     const lastErrorMessage = chrome.runtime.lastError && chrome.runtime.lastError.message;
     if (session.disconnect(port, lastErrorMessage)) {

@@ -156,6 +156,15 @@
       return;
     }
 
+    if (action === 'request_sync') {
+      console.log(`[RVS] request_sync received, videoIntegration=${!!videoIntegration}`);
+      // Off YouTube/Netflix there's nothing to report back.
+      if (videoIntegration) {
+        videoIntegration.respondToSyncRequest();
+      }
+      return;
+    }
+
     // Off YouTube/Netflix there's no Video Integration to apply the command
     // to. (Skipping commands while the peer is on a different video is
     // apply()'s own job now — see video-integration.js.)
@@ -221,6 +230,35 @@
       connectionState.disconnect();
       if (videoIntegration) {
         videoIntegration.forgetSharedMedia();
+      }
+      sendResponse({ success: true });
+      return;
+    }
+
+    if (msg.action === 'JOIN_PEER') {
+      const { peerMediaInfo } = connectionState.getSnapshot();
+      // Re-derived from live state, not trusted from the popup's payload
+      // (JOIN_PEER carries none) — getVideoId() doubles as the safety check
+      // here, since a non-YouTube/Netflix hostname (including javascript:/
+      // data: URIs, which parse with no hostname at all) never matches.
+      const peerVideoId = peerMediaInfo && peerMediaInfo.url ? getVideoId(peerMediaInfo.url) : null;
+      const localVideoId = getVideoId(location.href);
+      console.log(`[RVS] JOIN_PEER: peerUrl=${peerMediaInfo && peerMediaInfo.url} peerVideoId=${peerVideoId} localVideoId=${localVideoId}`);
+      if (!peerVideoId) {
+        sendResponse({ success: false });
+        return;
+      }
+      if (localVideoId === peerVideoId) {
+        // Already on the peer's video — a manual resync, no navigation needed.
+        console.log('[RVS] JOIN_PEER: same video, sending request_sync directly');
+        backgroundPort.send({ action: 'request_sync' });
+      } else {
+        // Tab Session (background.js) remembers this across the navigation,
+        // not sessionStorage — see the comment on pendingPeerSync in
+        // tab-session.js for why.
+        console.log(`[RVS] JOIN_PEER: different video, sending JOIN_PEER_PENDING then navigating to ${peerMediaInfo.url}`);
+        backgroundPort.send({ action: 'JOIN_PEER_PENDING' });
+        location.href = peerMediaInfo.url;
       }
       sendResponse({ success: true });
       return;

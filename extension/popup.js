@@ -120,11 +120,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const link = document.createElement('a');
       link.href = media.url;
       link.textContent = label;
-      // Navigate the current tab instead of opening a new window — clicking the
-      // peer's title "joins" what they're watching in place.
+      // content.js decides navigate-vs-resync (it has live isDifferentVideoFromPeer()
+      // state; the popup only has this poll's snapshot) — see Join Peer in CLAUDE.md.
       link.addEventListener('click', (e) => {
         e.preventDefault();
-        chrome.tabs.update({ url: media.url });
+        console.log('[RVS] popup: JOIN_PEER clicked, media=', media);
+        channel.send({ action: 'JOIN_PEER' }, () => {});
         window.close();
       });
       el.appendChild(link);
