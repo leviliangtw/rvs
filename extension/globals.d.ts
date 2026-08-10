@@ -16,6 +16,7 @@ interface TabSession {
   rebind(port: chrome.runtime.Port): void;
   disconnect(deadPort: chrome.runtime.Port, lastErrorMessage: string | undefined): boolean;
   handlePortMessage(msg: any): void;
+  requestPeerSync(): void;
   getStatus(): string;
 }
 declare function createTabSession(
@@ -97,6 +98,7 @@ interface RvsVideoIntegration {
   apply(msg: RvsSyncCommand): void;
   shareMediaInfo(force: boolean): void;
   forgetSharedMedia(): void;
+  respondToSyncRequest(): void;
 }
 
 interface RvsNamespace {

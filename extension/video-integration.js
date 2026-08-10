@@ -219,13 +219,33 @@
       /** @param {RvsSyncCommand} msg */
       apply(msg) {
         if (isDifferentVideoFromPeer()) {
+          console.log(`[RVS] apply(${msg.action}) skipped: isDifferentVideoFromPeer() is true`);
           return;
         }
+        console.log(`[RVS] apply(${msg.action}) time=${msg.time} rate=${msg.rate}`);
         player.apply(msg);
       },
       shareMediaInfo,
       forgetSharedMedia() {
         lastSentMediaInfo = null;
+      },
+      // Backs Join Peer (see CLAUDE.md): reports this side's live state as
+      // ordinary play/pause(+rate) packets — the same shapes apply() above
+      // already knows how to receive — rather than a bespoke reply shape.
+      // rate goes first: the direct player's park-and-drain (players.js) has
+      // only one pending slot, and the requester's <video> often doesn't
+      // exist yet right after a fresh navigation — sending play/pause last
+      // means it's the one that wins that slot if both arrive unparked.
+      respondToSyncRequest() {
+        if (!videoElement) {
+          console.log('[RVS] respondToSyncRequest: no bound <video>, nothing to report');
+          return;
+        }
+        console.log(`[RVS] respondToSyncRequest: paused=${videoElement.paused} time=${videoElement.currentTime} rate=${videoElement.playbackRate}`);
+        if (videoElement.playbackRate !== 1) {
+          send({ action: 'rate', rate: videoElement.playbackRate });
+        }
+        send({ action: videoElement.paused ? 'pause' : 'play', time: videoElement.currentTime });
       },
     };
   }
